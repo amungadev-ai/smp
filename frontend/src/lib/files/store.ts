@@ -1,0 +1,16 @@
+import {writable,get} from 'svelte/store';
+import {workspace} from '$lib/stores/workspace';
+import {freshFiles,replaceTree,saveSpace,emptyTree,sourceCopy,addUploads,encodeBytes,BATCH_LIMIT,MAX_ENTRIES,type FileState,type Tree,type Space,type Upload} from './model.js';
+const KEY='drevanta-native-files-v1';
+export const fileState=writable<FileState>(freshFiles());
+export function initFiles(){try{const raw=localStorage.getItem(KEY);if(raw){const saved=JSON.parse(raw);if(Array.isArray(saved.spaces)&&saved.projects&&typeof saved.projects==='object')fileState.set(saved);}}catch{}}
+function commit(next:FileState){try{localStorage.setItem(KEY,JSON.stringify(next));}catch{throw Error('Browser storage is full or unavailable. No file changes were saved.');}fileState.set(next);}
+export function rootFor(framework:string){return /^(Static website|PHP|WordPress)$/i.test(framework)?'public_html':'app';}
+export function getTree(state:FileState,key:string,framework=''){if(key.startsWith('space:'))return state.spaces.find(s=>s.id===key.slice(6))?.files;return key.startsWith('project:')?state.projects[key.slice(8)]||emptyTree(rootFor(framework)):undefined;}
+export function mutateTree(key:string,fn:(tree:Tree)=>Tree){const state=get(fileState),project=key.startsWith('project:')?get(workspace).projects.find(p=>p.id===key.slice(8)):null;if(key.startsWith('project:')&&!project)throw Error('Project not found.');const tree=getTree(state,key,project?.framework);if(!tree)throw Error('File target no longer exists.');commit(replaceTree(state,key,fn(tree)));}
+export function putSpace(input:{id:string;name:string;quota:number;access:Space['access']},editing=false){commit(saveSpace(get(fileState),input,editing));}
+export function removeSpace(id:string){const state=get(fileState);if(!state.spaces.some(s=>s.id===id))throw Error('Space not found.');commit({...state,spaces:state.spaces.filter(s=>s.id!==id)});}
+export async function readUploads(list:File[]){if(!list.length||list.length>MAX_ENTRIES||list.reduce((n,f)=>n+f.size,0)>BATCH_LIMIT)throw Error('Choose 1–500 files totaling at most 1 MiB.');const result:Upload[]=[];for(const file of list)result.push({path:file.webkitRelativePath||file.name,data:encodeBytes(new Uint8Array(await file.arrayBuffer()))});return result;}
+export function snapshotSource(key:string,path:string){const state=get(fileState),project=key.startsWith('project:')?get(workspace).projects.find(p=>p.id===key.slice(8)):null;if(key.startsWith('project:')&&!project)throw Error('Project not found.');const space=state.spaces.find(s=>key==='space:'+s.id);const tree=getTree(state,key,project?.framework);if(!tree||(!space&&!project))throw Error('Source no longer exists.');return {tree:sourceCopy(tree,path,space?'files':rootFor(project!.framework)),label:(space?.name||project?.name)+' / '+path,key,path};}
+export function snapshotLocal(uploads:Upload[]){return {tree:addUploads(emptyTree('app'),'app',uploads),label:'Uploaded from computer',key:'local',path:''};}
+export function stageProject(id:string,tree:Tree){const state=get(fileState);if(Object.hasOwn(state.projects,id))throw Error('A file tree already exists for this project.');commit(replaceTree(state,'project:'+id,tree));return ()=>{const current=get(fileState),projects={...current.projects};delete projects[id];commit({...current,projects});};}
