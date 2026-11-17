@@ -1,0 +1,25 @@
+{
+  "name": "drevanta-portal",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-node": "^5.2.12",
+    "@sveltejs/kit": "~2.48.0",
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "svelte": "^5.39.0",
+    "svelte-check": "^4.3.0",
+    "typescript": "~5.9.2",
+    "vite": "^6.3.6",
+    "@types/node": "^22.0.0"
+  }
+}

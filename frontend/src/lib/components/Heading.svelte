@@ -1,0 +1,1 @@
+<script lang="ts">export let title:string;export let subtitle='';</script><div class="page-heading"><div><h1>{title}</h1><p class="subtitle">{subtitle}</p></div><div class="row wrap"><slot/></div></div>

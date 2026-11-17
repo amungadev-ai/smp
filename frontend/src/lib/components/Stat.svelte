@@ -1,0 +1,1 @@
+<script lang="ts">import Icon from './Icon.svelte';export let label:string;export let value:string|number;export let icon:string;export let hint='';</script><div class="card"><div class="row between"><span class="muted">{label}</span><Icon name={icon}/></div><div class="summary-num tabular">{value}</div><small>{hint}</small></div>
