@@ -2,7 +2,7 @@
 
 The original reference is preserved under static/reference/v016.html. Native components share its extracted CSS. This milestone implements the dashboard shell, navigation, project gallery, container-image simulation, release history, logs, rollback, domain inventory and association, server overview/activity and palette settings.
 
-Remaining: build and browser validation; Git; WordPress; mail and standalone webmail; other infrastructure pages; authentication and the Go API. No placeholder is a working server service.
+Remaining: build and browser validation; Git; WordPress; other infrastructure pages; authentication and the Go API. No placeholder is a working server service.
 
 ## M02: Databases
 Native database inventory, inline creation, credentials, user grants, privileges, allowed hosts, SQL/GZ sample export, import preview, maintenance, history, and optional project associations are implemented. All operations are simulated; live SQL and administration tools, actual backups/restore, real authentication and API integration remain pending. Unit tests run through `npm test` (Node.js 22+).
@@ -12,3 +12,6 @@ Independent spaces with quota/privacy settings, shared folder tree and file oper
 
 ## M04: Application detection
 Native source inspection for ZIPs and folders, bounded extraction with CRC/path checks, framework and nested root detection, package manager and command recommendations, optional runtime overrides, database hints and environment variable names. A detected or uncertain application can be saved as a draft; no build or application execution occurs. The input and expanded archive are each capped at 1 MiB for browser persistence, with 500 entries per tree and a 3 MiB aggregate file limit. ZIP64, encrypted, symlink, split and non-UTF-8 archives are rejected. Real Git and deployment engine remain pending.
+
+## M05: Email and standalone webmail
+Native Mailboxes, Forwarders and DNS & setup, mailbox details and password entry/generation, quotas, suspension, auto-replies, and client settings. Webmail opens a separate /webmail/[id] tab with no panel shell. Folder/search/reader/compose/draft/reply/forward/mark/star/move/restore/delete use mailbox-scoped demo state; browser storage events synchronize other tabs and mutations read the latest saved state. Simultaneous tab writes are not transactional. No SMTP/IMAP, inbound/outbound delivery, attachments, actual DNS checks, credentials, authorization or employee login are implemented. Mailbox switching is a demo-only feature; real deployment requires authenticated mailbox isolation.
