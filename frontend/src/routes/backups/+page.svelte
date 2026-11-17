@@ -1,0 +1,1 @@
+<script lang="ts">import Heading from '$lib/components/Heading.svelte';import BackupsPanel from '$lib/components/infra/BackupsPanel.svelte';</script><Heading title="Backups" subtitle="Create, review and restore sample backup records for your workspace."/><BackupsPanel/>

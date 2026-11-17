@@ -1,0 +1,16 @@
+<script lang="ts">
+ import Icon from '$lib/components/Icon.svelte';import {workspace} from '$lib/stores/workspace';import {databaseState} from '$lib/database/store';import {fileState} from '$lib/files/store';import {infraState,infraCommand,infraId} from '$lib/infra/store';
+ export let fixedTarget='';let selected='workspace',error='',notice='';
+ $: options=[{id:'workspace',name:'Entire workspace (sample metadata)'},...$workspace.projects.map(p=>({id:'project:'+p.id,name:'Project · '+p.name})),...$databaseState.databases.map(d=>({id:'database:'+d.id,name:'Database · '+d.name})),...$fileState.spaces.map(s=>({id:'space:'+s.id,name:'Storage · '+s.name}))];
+ $: target=fixedTarget||selected;
+ $: items=$infraState.backups.filter(b=>!fixedTarget||b.target===fixedTarget);
+ function perform(fn:()=>void,message:string){try{fn();error='';notice=message;}catch(e){error=e instanceof Error?e.message:'Backup operation failed.';}}
+ function create(){perform(()=>infraCommand({type:'backup-create',id:infraId(),target,label:''}),'Created a sample backup entry. No files or data have been copied.');}
+ function restore(id:string){if(!window.confirm('Preview restoration? No files, settings or databases will change.'))return;perform(()=>infraCommand({type:'backup-restore',id}),'Restore simulation recorded. No data changed.');}
+ function remove(id:string){if(!window.confirm('Delete this sample backup record?'))return;perform(()=>infraCommand({type:'backup-delete',id}),'Sample backup record removed.');}
+</script>
+<div class="stack"><section class="card stack"><div class="row between wrap"><div><h3>Backup history</h3><p class="subtitle">Metadata only. No files, databases or mailboxes are copied.</p></div>{#if fixedTarget}<button class="btn primary" on:click={create}><Icon name="Plus"/> Create sample backup</button>{/if}</div>
+{#if !fixedTarget}<form class="native-inline" on:submit|preventDefault={create}><label class="field grow">Backup target<select bind:value={selected}>{#each options as option}<option value={option.id}>{option.name}</option>{/each}</select></label><button class="btn primary" type="submit" style="align-self:end"><Icon name="Plus"/> Create sample backup</button></form>{/if}
+{#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p class="subtitle" role="status">{notice}</p>{/if}
+{#each items as b (b.id)}<div class="setting-row"><div class="row"><span class="icon-box"><Icon name="Backups"/></span><div><strong>{b.label}</strong><small style="display:block">{new Date(b.at).toLocaleString()} · {b.target} · {b.restores.length} restore previews</small></div></div><div class="table-actions"><button class="btn secondary small" on:click={()=>restore(b.id)}>Simulate restore</button><button class="btn danger small" on:click={()=>remove(b.id)}>Delete entry</button></div></div>{:else}<div class="empty-state"><h3>No backup entries</h3><p>Create a sample backup to review the restore workflow.</p></div>{/each}
+</section><div class="callout"><strong>Production backup requirements</strong><p>Real backups must capture application volumes and databases consistently, use encrypted off-server storage, retention policies, integrity checks and tested restores.</p></div></div>
