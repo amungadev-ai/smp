@@ -2,9 +2,8 @@
  import Icon from '$lib/components/Icon.svelte';import type {Project} from '$lib/model';
  import {projectProcess} from '$lib/stores/workspace';import {infraState,infraCommand} from '$lib/infra/store';import {runtimeProfiles} from '$lib/infra/model.js';
  export let project:Project;
- let error='',notice='',profile='';
- $: configured=$infraState.runtimeAssignments[project.id]||'';
- $: if(profile!==configured)profile=configured;
+ let error='',notice='',profile='',lastProject='';
+ $: {if(project.id!==lastProject){lastProject=project.id;profile=$infraState.runtimeAssignments[project.id]||'';}}
  function process(operation:'Start'|'Stop'|'Restart'){try{projectProcess(project.id,operation);notice=operation+' simulated; no real process was changed.';error='';}catch(e){error=e instanceof Error?e.message:'Process control unavailable.';}}
  function setProfile(){try{infraCommand({type:'runtime-assign',project:project.id,profile});error='';notice='Runtime preference saved, no runtime installed.';}catch(e){error=e instanceof Error?e.message:'Profile unavailable.';}}
  function setAuto(value:boolean){try{infraCommand({type:'auto-deploy',project:project.id,enabled:value});error='';notice='Auto-deploy preference saved. No webhook configured.';}catch(e){error=e instanceof Error?e.message:'Setting unavailable.';}}

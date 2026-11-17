@@ -1,8 +1,8 @@
 <script lang="ts">
  import Heading from '$lib/components/Heading.svelte';import Icon from '$lib/components/Icon.svelte';import {workspace} from '$lib/stores/workspace';import {infraState,infraCommand} from '$lib/infra/store';import {runtimeProfiles} from '$lib/infra/model.js';
- let project='',profile='',error='',notice='';
- $: available=$workspace.projects;$: if(!project&&available.length)project=available[0].id;
- $: current=$infraState.runtimeAssignments[project]||'';$: if(profile!==current&&project)profile=current;
+ let project='',profile='',error='',notice='',lastProject='';
+ $: available=$workspace.projects;$: {if(!project&&available.length)project=available[0].id;}
+ $: {if(project!==lastProject){lastProject=project;profile=$infraState.runtimeAssignments[project]||'';}}
  function save(){try{infraCommand({type:'runtime-assign',project,profile});error='';notice='Runtime preference saved locally. No server runtime was installed or changed.';}catch(e){error=e instanceof Error?e.message:'Unable to save preference.';}}
 </script>
 <Heading title="Runtime profiles" subtitle="Recommended application environments and deployment defaults."/>

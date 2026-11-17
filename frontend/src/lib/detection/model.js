@@ -50,7 +50,7 @@ function detectAt(tree,root){
  for(const n of ['.env.example','.env.sample'])for(const line of read(n).split(/\r?\n/)){const match=line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);if(match&&!result.environmentKeys.includes(match[1])&&result.environmentKeys.length<50)result.environmentKeys.push(match[1]);}
  return result;
 }
-/** @param {Tree} tree @param {string} [root] */
+/** @param {Tree} tree @param {string} [root] @returns {Detection} */
 export function detect(tree,root){if(root!==undefined){if(root!=='.'&&!validPath(root))throw Error('Invalid source root.');if(root!=='.'&&tree['app/'+root]?.kind!=='folder')throw Error('Source root does not exist.');return detectAt(tree,root);}
  const top=detectAt(tree,'.');if(top.framework!=='Not detected'&&top.framework!=='Static website')return top;
  const dirs=[...new Set(Object.keys(tree).filter(p=>tree[p].kind==='file'&&p.startsWith('app/')).map(p=>p.slice(4).split('/')).filter(parts=>parts.length>1&&parts.length<=6&&signals.has(parts.at(-1)||'')&&!parts.slice(0,-1).some(x=>ignored.has(x))).map(parts=>parts.slice(0,-1).join('/')))].sort((a,b)=>a.split('/').length-b.split('/').length||a.localeCompare(b));
@@ -63,4 +63,4 @@ export function detect(tree,root){if(root!==undefined){if(root!=='.'&&!validPath
 /** @param {Detection} config @param {Tree} tree */
 export function validateConfig(config,tree){if(!frameworks.includes(config.framework))throw Error('Select a supported application type.');if(config.root!=='.'&&(!validPath(config.root)||tree['app/'+config.root]?.kind!=='folder'))throw Error('Select an existing source root.');if(!Number.isInteger(config.port)||config.port<1||config.port>65535||!Number.isInteger(config.ram)||config.ram<64||config.ram>65536||!Number.isInteger(config.cpu)||config.cpu<1||config.cpu>100)throw Error('Enter valid port, memory and CPU values.');if([config.install,config.build,config.start,config.output].some(x=>typeof x!=='string'||x.length>500||/[\x00\r\n]/.test(x)))throw Error('Use single-line deployment settings (up to 500 characters).');if(config.output&&config.output!=='.'&&!validPath(config.output))throw Error('Output directory must be a relative path.');if(config.environmentKeys.length>50||new Set(config.environmentKeys).size!==config.environmentKeys.length||config.environmentKeys.some(k=>!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)))throw Error('Environment keys must be unique valid identifiers.');return config;}
 /** @param {Tree} tree @param {string} root @returns {Tree} */
-export function projectTree(tree,root){if(root==='app')return tree;/** @type {Tree} */const out={};for(const [p,value] of Object.entries(tree))out[root+p.slice(3)]=structuredClone(value);return out;}
+export function projectTree(tree,root){if(root==='app')return tree;const out=/** @type {Tree} */({});for(const [p,value] of Object.entries(tree))out[root+p.slice(3)]=structuredClone(value);return out;}

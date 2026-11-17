@@ -2,7 +2,7 @@
 
 The original reference is preserved under static/reference/v016.html. Native components share its extracted CSS. This milestone implements the dashboard shell, navigation, project gallery, container-image simulation, release history, logs, rollback, domain inventory and association, server overview/activity and palette settings.
 
-Remaining: build and browser validation; Git; other infrastructure pages; authentication and the Go API. No placeholder is a working server service.
+Remaining: validated production build and browser end-to-end tests; authentication, authorization and Go API integration. Source-linked applications, databases, mail, jobs and backups are simulated. No placeholder is a working server service.
 
 ## M02: Databases
 Native database inventory, inline creation, credentials, user grants, privileges, allowed hosts, SQL/GZ sample export, import preview, maintenance, history, and optional project associations are implemented. All operations are simulated; live SQL and administration tools, actual backups/restore, real authentication and API integration remain pending. Unit tests run through `npm test` (Node.js 22+).
@@ -18,3 +18,6 @@ Native Mailboxes, Forwarders and DNS & setup, mailbox details and password entry
 
 ## M06: Website hosting
 The native Websites inventory shares project state. Guided fresh WordPress and migration setup creates a draft project, domain association, private MySQL database/user, and sample file workspace. Migration validates ZIP and SQL/SQL.GZ selection metadata only (or sample mode); no archive contents are read or restored. PHP/static uploads reuse source detection and File Manager; publishing readiness checks the entry point and records a preview without starting a server. WordPress install, backup import, migrations, PHP runtime, wp-admin login and actual publishing require backend work. Browser stores are separate; setup uses compensating rollback on ordinary write failures, not a transactional database.
+
+## M07: Remaining infrastructure pages
+Native Containers (simulated start/stop/restart), Certificates (DNS/TLS preview only), GitHub project import drafts and auto-deploy preference, cron and application jobs (validated metadata with simulated runs), Runtime profiles (preference only), Services (readiness preview only), and Backups (metadata and restore preview only). Project Settings and Backups tabs share these components. No Linux commands, DNS, TLS issuance, real GitHub authentication, Git builds or data restores occur. Infrastructure reducer regression tests run under npm test. CI compilation is being brought under verification.

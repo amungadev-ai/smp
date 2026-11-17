@@ -1,6 +1,6 @@
 import {writable,get} from 'svelte/store';
 import {freshWorkspace} from '$lib/demo-data';
-import {slugify,type Workspace,type Project,type Release} from '$lib/model';
+import {slugify,type Workspace,type Project,type Release} from '$lib/model';import {githubRepository,gitBranch} from '$lib/infra/model.js';
 const KEY='drevanta-svelte-m01';
 export const workspace=writable<Workspace>(freshWorkspace());
 const id=()=>globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
@@ -14,3 +14,24 @@ export function connectDomain(projectId:string,domainId:string){const s=get(work
 export function disconnectDomain(projectId:string,domainId:string){const s=get(workspace);workspace.set(record({...s,domains:s.domains.map(d=>d.id===domainId&&d.project===projectId&&!d.system?{...d,project:null,status:'Available',ssl:false}:d)},'Disconnected '+domainId+' (demo)'));}
 
 export function recordWebsitePreview(projectId:string,directory:string){const s=get(workspace),p=s.projects.find(x=>x.id===projectId);if(!p||!['Static website','PHP'].includes(p.framework))throw Error('Website preview unavailable.');const next=record({...s,projects:s.projects.map(x=>x.id===projectId?{...x,websitePreview:{directory,at:new Date().toISOString()}}:x)},'Publishing readiness checked for '+p.name+' (demo)');try{localStorage.setItem(KEY,JSON.stringify(next));}catch{throw Error('Browser storage is unavailable. Preview not saved.');}workspace.set(next);}
+
+export function createGitProject(name:string,url:string,branch:string,hostname:string){
+ const key=slugify(name),repo=githubRepository(url),safeBranch=gitBranch(branch),s=get(workspace);
+ if(!key||name.trim().length>80)throw Error('Enter a project name of 1–80 characters.');
+ if(s.projects.some(p=>p.id===key))throw Error('Project name already exists.');
+ if(hostname&&!s.domains.some(d=>d.id===hostname&&!d.project&&!d.system))throw Error('Choose an available workspace domain.');
+ const address=key+'.drevanta.example';
+ if(!hostname&&s.domains.some(d=>d.id===address))throw Error('Automatic address already exists.');
+ const p:Project={id:key,name:name.trim(),framework:'Unclassified application',source:'GitHub',repo,branch:safeBranch,port:8080,ram:128,cpu:25,status:'Ready',releases:[],activeRelease:null};
+ const domains=hostname?s.domains.map(d=>d.id===hostname?{...d,project:key,status:'Pending DNS' as const}:d):[...s.domains,{id:address,name:address,project:key,status:'Pending DNS' as const,ssl:false,system:true}];
+ const next=record({...s,projects:[...s.projects,p],domains},'GitHub project draft created: '+p.name+' (demo)');
+ try{localStorage.setItem(KEY,JSON.stringify(next));}catch{throw Error('Unable to save project draft in browser storage.');}workspace.set(next);return key;
+}
+export function projectProcess(projectId:string,operation:'Start'|'Stop'|'Restart'){
+ const s=get(workspace),p=s.projects.find(x=>x.id===projectId);if(!p)throw Error('Project not found.');
+ if(operation==='Start'&&p.status!=='Stopped')throw Error('Only stopped demo processes can be started.');
+ if(operation!=='Start'&&p.status!=='Live')throw Error('Application must be live to stop or restart.');
+ const status:Project['status']=operation==='Stop'?'Stopped':'Live';
+ const next=record({...s,projects:s.projects.map(x=>x.id===projectId?{...x,status}:x)},operation+' simulated for '+p.name+'; no Docker operations performed');
+ try{localStorage.setItem(KEY,JSON.stringify(next));}catch{throw Error('Unable to store process preview.');}workspace.set(next);
+}

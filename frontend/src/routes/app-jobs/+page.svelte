@@ -1,7 +1,7 @@
 <script lang="ts">
  import Heading from '$lib/components/Heading.svelte';import Icon from '$lib/components/Icon.svelte';import {workspace} from '$lib/stores/workspace';import {infraState,infraCommand,infraId} from '$lib/infra/store';
  let show=false,editing='',project='',name='',kind:'Worker command'|'HTTP request'='Worker command',target='',error='',notice='';
- $: if(project&&!$workspace.projects.some(p=>p.id===project))project='';
+ $: {if(project&&!$workspace.projects.some(p=>p.id===project))project='';}
  function start(id=''){const job=$infraState.jobs.find(x=>x.id===id);editing=id;project=job?.project||$workspace.projects[0]?.id||'';name=job?.name||'';kind=job?.kind||'Worker command';target=job?.target||'';error='';show=true;}
  function submit(){try{if(editing)infraCommand({type:'job-edit',id:editing,name,kind,target});else infraCommand({type:'job-create',id:infraId(),project,name,kind,target});notice='Application job draft saved. No worker or HTTP request was executed.';show=false;error='';}catch(e){error=e instanceof Error?e.message:'Job configuration invalid.';}}
  function act(fn:()=>void){try{fn();error='';notice='Sample operation recorded. No process or HTTP request was started.';}catch(e){error=e instanceof Error?e.message:'Action unavailable.';}}
