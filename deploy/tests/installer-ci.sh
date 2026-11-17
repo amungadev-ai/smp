@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 cd "$ROOT"
-for script in deploy/install.sh deploy/verify.sh deploy/tests/installer-ci.sh deploy/tests/stack-ci.sh deploy/state.sh deploy/tests/state-ci.sh engine/install.sh;do bash -n "$script";done
+for script in deploy/install.sh deploy/verify.sh deploy/tests/installer-ci.sh deploy/tests/stack-ci.sh deploy/state.sh deploy/tests/state-ci.sh deploy/preflight.sh deploy/tests/preflight-ci.sh engine/install.sh;do bash -n "$script";done
 plan="$(./deploy/install.sh --plan)"
 [[ "$plan" == *'--mock'* && "$plan" == *'127.0.0.1:3000'* && "$plan" == *'127.0.0.1:8080'* ]] || { echo 'Unsafe installer plan' >&2;exit 1; }
 legacy="$(./engine/install.sh --plan)"

@@ -41,3 +41,17 @@ Restoration is intentionally **state.json only**, and an offline operation. It c
 GitHub Actions runs Go unit/race tests, frontend checks and a command-line backup/verify/restore smoke test. The snapshot tests include corruption detection, unsafe archive entries, oversize rejection, original state preservation and no overwrite of existing backup files. Real VPS restoration after service restart still needs a disposable test host.
 
 See [M09 installation](M09-INSTALL.md) and [M08C live acceptance](../engine/docs/M08C-ACCEPTANCE.md).
+
+## Disposable-VPS preflight (read-only)
+
+M10 also includes `deploy/preflight.sh`, which checks Linux/Go/Node prerequisites and, with explicit disposable-VPS acknowledgement, checks Docker availability, DNS A record targeting and the **empty dedicated Caddy admin instance** at 127.0.0.1:2021. It never calls Caddy `/load`, starts containers, requests certificates or enables live mode.
+
+```bash
+./deploy/preflight.sh --plan
+./deploy/preflight.sh --check-local
+# On a disposable VPS only, after configuring dedicated Caddy and DNS:
+./deploy/preflight.sh --check-live --domain app.test-example.com \\
+  --expected-ip YOUR_PUBLIC_IPV4 --confirm-disposable
+```
+
+Passing preflight does not establish public HTTPS, zero downtime, real rollback or production readiness. Complete [M08C acceptance](../engine/docs/M08C-ACCEPTANCE.md) on a disposable VPS and preserve test logs before reconsidering live mode.
