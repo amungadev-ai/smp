@@ -1,11 +1,7 @@
-# Drevanta Engine — bootstrap Caddyfile example.
-# The engine normally POSTs its generated configuration to Caddy's admin API
-# (127.0.0.1:2019). Use this file only to bootstrap before the first deploy.
+# DISPOSABLE VPS REFERENCE ONLY — NOT INSTALLED OR ENABLED BY M09.
+# The Go engine's live /load operation replaces this entire dedicated instance.
+# Do NOT use the stock/shared Caddy instance or an existing production VPS.
 {
-	admin 127.0.0.1:2019
+    admin 127.0.0.1:2021
 }
-
-# Example site block created by the engine after a successful deploy:
-# app.example.com {
-# 	reverse_proxy 127.0.0.1:31234
-# }
+# The M09 portal is served on loopback separately; no public routes are enabled.
