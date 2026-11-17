@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drevanta Engine · console</title>
+<style>
+:root{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+--primary:#0d9488;--primary-hover:#14b8a6;--primary-tint:#f0fdfa;
+--bg:#fff;--raised:#f8fafc;--overlay:#fff;--sunken:#f1f5f9;--text:#0f172a;--secondary:#334155;
+--muted:#64748b;--border:#e2e8f0;--border-default:#cbd5e1;
+--success:#16a34a;--warning:#d97706;--danger:#dc2626;--info:#2563eb;
+--success-bg:#f0fdf4;--warning-bg:#fffbeb;--danger-bg:#fef2f2;--info-bg:#eff6ff;
+--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--shadow:0 1px 2px rgb(0 0 0/.05)}
+*{box-sizing:border-box}body{margin:0;background:var(--sunken);color:var(--text);font-size:14px;line-height:1.5}
+header{display:flex;align-items:center;gap:12px;padding:14px 24px;background:var(--overlay);border-bottom:1px solid var(--border)}
+.brand{font-weight:700;font-size:18px}.brand b{color:var(--primary)}
+main{max-width:1050px;margin:0 auto;padding:22px;display:flex;flex-direction:column;gap:16px}
+.card{background:var(--raised);border:1px solid var(--border);border-radius:8px;padding:20px;box-shadow:var(--shadow)}
+.card h2{margin:0 0 10px;font-size:15px}
+.btn{border:1px solid var(--border-default);background:var(--overlay);color:var(--secondary);
+border-radius:8px;padding:7px 13px;font:inherit;cursor:pointer;box-shadow:var(--shadow)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.small{padding:3px 9px;font-size:12.5px;box-shadow:none}
+.btn.danger{color:var(--danger)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+input,select{border:1px solid var(--border-default);border-radius:8px;padding:8px 11px;font:inherit;width:100%;background:var(--overlay)}
+label{font-size:12.5px;font-weight:600;color:var(--secondary);display:block;margin:0 0 4px}
+.field{margin-bottom:10px}
+.chip{display:inline-flex;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;background:var(--sunken);color:var(--secondary)}
+.chip.ok{background:var(--success-bg);color:var(--success)}.chip.bad{background:var(--danger-bg);color:var(--danger)}
+.chip.warn{background:var(--warning-bg);color:var(--warning)}.chip.info{background:var(--info-bg);color:var(--info)}
+table{width:100%;border-collapse:collapse;background:var(--overlay);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:9px 12px;background:var(--raised)}
+td{padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px}
+.mono{font-family:var(--mono);font-size:12px}
+.sub{color:var(--muted);font-size:12.5px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+.terminal{background:#0f172a;color:#e2e8f0;font-family:var(--mono);font-size:12px;border-radius:10px;padding:12px;max-height:260px;overflow:auto}
+.banner{border-radius:10px;padding:10px 14px;font-size:13px;border:1px solid;background:var(--info-bg);border-color:var(--info)}
+.login{max-width:380px;margin:12vh auto}
+</style>
+</head>
+<body>
+<div id="login" class="login card">
+  <div class="brand" style="margin-bottom:14px">dre<b>vanta</b> <span class="sub">engine console · M01</span></div>
+  <div class="field"><label>Admin password</label><input type="password" id="pw"></div>
+  <button class="btn primary" style="width:100%" id="go">Sign in</button>
+  <p class="sub" id="err" style="color:var(--danger);margin-top:8px"></p>
+</div>
+<div id="app" hidden>
+  <header>
+    <div class="brand">dre<b>vanta</b> <span class="sub">engine console</span></div>
+    <span class="chip" id="mode"></span>
+    <span class="chip" id="ver"></span>
+    <span style="flex:1"></span>
+    <button class="btn small" id="out">Sign out</button>
+  </header>
+  <main>
+    <div class="grid">
+      <div class="card">
+        <h2>Server readiness</h2>
+        <div id="checks" class="sub">loading…</div>
+        <div id="hostfacts" class="mono sub" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <h2>Deploy application</h2>
+        <div class="field"><label>Project name</label><input id="d-name" placeholder="marketing-site"></div>
+        <div class="field"><label>Docker image</label><input id="d-image" value="nginx:alpine"></div>
+        <div class="field"><label>Container port</label><input id="d-port" value="80"></div>
+        <div class="field"><label>Domain (optional)</label><input id="d-domain" placeholder="app.example.com"></div>
+        <button class="btn primary" id="d-go">Queue deployment</button>
+        <p class="sub" id="d-state"></p>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Projects</h2>
+      <div id="projects" class="sub">loading…</div>
+    </div>
+    <div class="card">
+      <h2>Container logs <span class="sub" id="log-proj"></span></h2>
+      <div class="terminal" id="log">select a project…</div>
+    </div>
+  </main>
+</div>
+<script>
+let TOKEN = localStorage.getItem('drvt_token') || '';
+const $ = s => document.querySelector(s);
+const api = (m, p, b) => fetch(p, {method: m, headers: Object.assign({'Content-Type':'application/json'},
+  TOKEN ? {Authorization:'Bearer '+TOKEN} : {}), body: b ? JSON.stringify(b) : undefined})
+  .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || r.status); return d; });
+
+async function boot() {
+  if (!TOKEN) return showLogin();
+  try {
+    const h = await api('GET', '/api/v1/health');
+    $('#mode').textContent = h.mock_mode ? 'mock mode' : 'live mode';
+    $('#mode').className = 'chip ' + (h.mock_mode ? 'warn' : 'ok');
+    $('#ver').textContent = 'v' + h.version;
+    $('#login').hidden = true; $('#app').hidden = false;
+    refresh();
+  } catch { showLogin(); }
+}
+function showLogin(){ $('#login').hidden = false; $('#app').hidden = true; }
+
+$('#go').onclick = async () => {
+  try {
+    const r = await api('POST', '/api/v1/auth/login', {password: $('#pw').value});
+    TOKEN = r.token; localStorage.setItem('drvt_token', TOKEN);
+    $('#err').textContent = ''; boot();
+  } catch (e) { $('#err').textContent = e.message; }
+};
+$('#pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').click(); });
+$('#out').onclick = () => { TOKEN = ''; localStorage.removeItem('drvt_token'); showLogin(); };
+
+async function refresh() {
+  const [si, rd, pr] = await Promise.all([
+    api('GET','/api/v1/server'), api('GET','/api/v1/server/readiness'), api('GET','/api/v1/projects')]);
+  $('#checks').innerHTML = rd.checks.map(c =>
+    `<div style="padding:4px 0"><span class="chip ${c.ok?'ok':'bad'}">${c.ok?'pass':'fail'}</span> <strong>${c.label}</strong> — ${c.detail}</div>`).join('');
+  $('#hostfacts').textContent = `${si.hostname} · ${si.os} · ${si.cpu_cores} cores · ${si.ip}`;
+  const ps = pr.projects;
+  $('#projects').innerHTML = ps.length ? '<table><thead><tr><th>Project</th><th>Image</th><th>Status</th><th>Releases</th><th></th></tr></thead><tbody>' +
+    ps.map(p => `<tr><td class="mono"><strong>${p.name}</strong>${p.domain?`<div class="sub">${p.domain}</div>`:''}</td>
+      <td class="mono">${p.image}</td><td><span class="chip ${p.status==='running'?'ok':p.status==='failed'?'bad':'info'}">${p.status}</span></td>
+      <td>${p.release_count||0}</td>
+      <td style="white-space:nowrap">
+        <button class="btn small" onclick="viewLogs('${p.id}','${p.name}')">logs</button>
+        <button class="btn small" onclick="restart('${p.id}')">restart</button>
+        <button class="btn small" onclick="rollback('${p.id}')">rollback</button>
+      </td></tr>`).join('') + '</tbody></table>'
+    : 'No projects yet — deploy one above.';
+}
+window.viewLogs = async (id, name) => {
+  $('#log-proj').textContent = '— ' + name;
+  $('#log').textContent = 'connecting…';
+  const es = new EventSource(`/api/v1/projects/${id}/logs/stream?token=${encodeURIComponent(TOKEN)}`);
+  es.onmessage = e => {
+    const line = JSON.parse(e.data);
+    const el = document.createElement('div');
+    el.textContent = (line.stream === 'stderr' ? '✗ ' : '') + line.message;
+    if (line.stream === 'stderr') el.style.color = '#f87171';
+    $('#log').appendChild(el);
+    $('#log').scrollTop = $('#log').scrollHeight;
+    while ($('#log').children.length > 200) $('#log').firstChild.remove();
+  };
+};
+window.restart = async id => { try { await api('POST', `/api/v1/projects/${id}/restart`); setTimeout(refresh, 1200); } catch (e) { alert(e.message); } };
+window.rollback = async id => { try { await api('POST', `/api/v1/projects/${id}/rollback`, {}); setTimeout(refresh, 1200); } catch (e) { alert(e.message); } };
+
+$('#d-go').onclick = async () => {
+  $('#d-state').textContent = 'queueing…';
+  try {
+    await api('POST', '/api/v1/projects/deploy', {
+      name: $('#d-name').value.trim(), image: $('#d-image').value.trim(),
+      port: Number($('#d-port').value) || 80, domain: $('#d-domain').value.trim() || undefined });
+    $('#d-state').textContent = 'deployment job queued';
+    setTimeout(refresh, 1200);
+  } catch (e) { $('#d-state').textContent = e.message; }
+};
+boot();
+setInterval(() => { if (TOKEN && !$('#app').hidden) refresh().catch(() => {}); }, 10000);
+</script>
+</body>
+</html>

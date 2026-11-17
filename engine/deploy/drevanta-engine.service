@@ -1,0 +1,14 @@
+[Unit]
+Description=Drevanta core server engine (M01)
+After=network.target docker.service caddy.service
+Wants=docker.service caddy.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/drevanta-engine --addr 127.0.0.1:8080 --data /var/lib/drevanta-engine --web /opt/drevanta-engine/web
+Environment=DRVT_ADMIN_PASSWORD=
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
