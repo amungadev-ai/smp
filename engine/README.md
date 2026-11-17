@@ -5,7 +5,7 @@ readiness, deploys approved Docker containers as background jobs, health-checks
 them, routes domains through Caddy (automatic HTTPS), streams container logs
 over Server-Sent Events and rolls back to the previous good release.
 
-**M08A import status:** This source is integrated in mock-only mode until live release routing and rollback safety are verified. A `--live` flag currently refuses startup. The engine API remains usable for tests and portal integration.
+**M08C status:** Mock mode is the default. Live mode now requires `--live --ack-disposable-vps --caddy-admin http://127.0.0.1:2021` and a dedicated Caddy instance. Follow [M08C acceptance](docs/M08C-ACCEPTANCE.md); passing CI is not real VPS validation.
 
 **M01 scope:** JSON file persistence (PostgreSQL arrives in milestone 05), a
 small vanilla-JS console for lab testing, and mock modes for Docker/Caddy so
@@ -90,3 +90,7 @@ SSE frame delivery and the health endpoint shape.
 No PostgreSQL, no multi-host management, no build-from-source pipeline
 (milestone 03), no storage quotas — those follow the roadmap in `docs/ROADMAP.md`
 at the repository root.
+
+## M08C validation
+
+Run `go test ./...`, `go test -race ./...`, `go vet ./...` and `go build -o drevanta-engine ./cmd/drevanta-engine && ./scripts/mock-ci.sh`. The smoke test exercises the actual HTTP server. Live HTTPS testing requires a disposable VPS and explicitly opt-in configuration; see `docs/M08C-ACCEPTANCE.md`.

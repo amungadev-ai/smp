@@ -1,3 +1,9 @@
+# CAUTION: earlier M01 installation guide — NOT a supported production procedure
+
+This legacy guide references a stock Caddy admin API and an older console. Do not follow it for a real deployment. For M08C acceptance, use [the disposable-VPS guide](M08C-ACCEPTANCE.md) and a **dedicated** Caddy instance on port 2021. The default engine process runs in mock mode. The generated admin password is saved to `data/admin-password`, **not** printed in the journal. The Go engine binds to loopback by default.
+
+---
+
 # Installing the Drevanta Engine on a VPS
 
 Target: a fresh Ubuntu 22.04/24.04 or Debian 12 box with root SSH. The engine
