@@ -1,0 +1,33 @@
+name: VPS installer and production-stack validation
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/**"
+      - "engine/install.sh"
+      - "frontend/src/hooks.server.ts"
+      - "frontend/src/lib/engine/proxy-policy.js"
+      - ".github/workflows/installer.yml"
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "engine/install.sh"
+      - "frontend/src/hooks.server.ts"
+      - "frontend/src/lib/engine/proxy-policy.js"
+      - ".github/workflows/installer.yml"
+permissions:
+  contents: read
+jobs:
+  localhost-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: ./deploy/tests/installer-ci.sh
+      - run: ./deploy/tests/stack-ci.sh
