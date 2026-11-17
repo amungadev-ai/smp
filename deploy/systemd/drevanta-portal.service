@@ -7,11 +7,11 @@ Requires=drevanta-engine.service
 
 [Service]
 Type=simple
-User=drevanta
-Group=drevanta
+User=drevanta-portal
+Group=drevanta-portal
 WorkingDirectory=/opt/drevanta/current/portal
 ExecStart=/usr/bin/env node /opt/drevanta/current/portal/build/index.js
-Environment=HOME=/var/lib/drevanta-engine
+Environment=HOME=/var/lib/drevanta-portal
 Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=3000

@@ -8,6 +8,7 @@ ROOT=/opt/drevanta
 RELEASES="$ROOT/releases"
 STATE=/var/lib/drevanta-engine
 SERVICE_USER=drevanta
+PORTAL_USER=drevanta-portal
 BUILD_USER=drevanta-build
 UNITS=/etc/systemd/system
 MODE=''
@@ -52,7 +53,7 @@ Engine state: $STATE (preserved across upgrades)
 Services: drevanta-engine.service (127.0.0.1:8080, --mock)
           drevanta-portal.service (127.0.0.1:3000, production API proxy)
 Builds: Go 1.22+, Node.js 22+, npm
-Service user: $SERVICE_USER (no Docker group)
+Service users: engine=$SERVICE_USER, portal=$PORTAL_USER (no Docker group)
 No Caddy changes, no firewall changes, no public ports, no database server.
 EOF
  exit 0
@@ -111,11 +112,15 @@ else die 'Could not determine Go version';fi
 if ! id "$SERVICE_USER" >/dev/null 2>&1;then
  useradd --system --home-dir "$STATE" --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
+if ! id "$PORTAL_USER" >/dev/null 2>&1;then
+ useradd --system --home-dir /var/lib/drevanta-portal --shell /usr/sbin/nologin "$PORTAL_USER"
+fi
 if ! id "$BUILD_USER" >/dev/null 2>&1;then
  useradd --system --home-dir /var/lib/drevanta-build --shell /usr/sbin/nologin "$BUILD_USER"
 fi
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0700 "$STATE"
 install -d -o "$BUILD_USER" -g "$BUILD_USER" -m 0700 /var/lib/drevanta-build
+install -d -o "$PORTAL_USER" -g "$PORTAL_USER" -m 0700 /var/lib/drevanta-portal
 install -d -o root -g root -m 0755 "$ROOT" "$RELEASES" "$ROOT/staging"
 STAGE="$(mktemp -d "$ROOT/staging/.build.XXXXXXXX")"
 chmod 0711 "$STAGE"

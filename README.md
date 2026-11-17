@@ -11,7 +11,7 @@ The M09 installer configures **two sandboxed, local-only systemd services**:
 - Go engine on `127.0.0.1:8080` forced into **mock mode**
 - SvelteKit adapter-node portal on `127.0.0.1:3000`, proxying `/api/v1/*` to Go
 
-It uses a separate unprivileged build account, keeps code root-owned after building, preserves a 0600 administrator password in persistent engine state, and supports versioned upgrades and rollback. An SSH tunnel provides access. **No live Docker, Caddy, HTTPS or production application deployment is enabled.**
+It uses separate engine, portal and unprivileged build accounts, keeps code root-owned after building, preserves a 0600 administrator password in persistent engine state, and supports versioned upgrades and rollback. An SSH tunnel provides access. **No live Docker, Caddy, HTTPS or production application deployment is enabled.**
 
 See [M09 installation](docs/M09-INSTALL.md), [M08C acceptance](engine/docs/M08C-ACCEPTANCE.md) and the [installer CI workflow](.github/workflows/installer.yml).
 

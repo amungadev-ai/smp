@@ -18,7 +18,7 @@ sudo ./deploy/install.sh --install --accept-mock-only
 ./deploy/install.sh --verify
 ```
 
-The script validates dependencies, creates two dedicated accounts, builds and tests Go/SvelteKit as `drevanta-build` (which cannot read engine state), stages a root-owned release, installs sandboxed systemd units, enables them and verifies local-only health and authentication. The runtime account is `drevanta`, **not in the Docker group**. Existing, non-M09 systemd units are not overwritten.
+The script validates dependencies, creates two dedicated accounts, builds and tests Go/SvelteKit as `drevanta-build` (which cannot read engine state), stages a root-owned release, installs sandboxed systemd units, enables them and verifies local-only health and authentication. The Go runtime account is `drevanta` and the separate portal runtime account is `drevanta-portal`, neither in the Docker group. The portal user cannot read the Go password file (owned by `drevanta`, mode 0600). Existing, non-M09 systemd units are not overwritten.
 
 Services:
 

@@ -14,11 +14,12 @@ grep -Fq 'ExecStart=/opt/drevanta/current/engine/drevanta-engine --mock --addr 1
 grep -Fxq 'Environment=HOST=127.0.0.1' "$portal"
 grep -Fxq 'Environment=DRVT_ENGINE_URL=http://127.0.0.1:8080' "$portal"
 for unit in "$engine" "$portal";do
- grep -Fxq 'User=drevanta' "$unit"
+ if [[ "$unit" == "$portal" ]];then grep -Fxq 'User=drevanta-portal' "$unit";else grep -Fxq 'User=drevanta' "$unit";fi
  grep -Fxq 'NoNewPrivileges=true' "$unit"
  grep -Fxq 'ProtectSystem=strict' "$unit"
  ! grep -q -- '--live\|--ack-disposable-vps' "$unit"
 done
+grep -Fq 'PORTAL_USER=drevanta-portal' deploy/install.sh
 grep -Fq 'BUILD_USER=drevanta-build' deploy/install.sh
 grep -Fq 'chmod -R a+rX "$RELEASES/$RELEASE"' deploy/install.sh
 echo 'PASS M09 CLI syntax, preview policy and service unit checks'
