@@ -1,0 +1,30 @@
+# Managed by Drevanta M09 installer — mock-only preview
+[Unit]
+Description=Drevanta Go engine (mock-only preview)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=drevanta
+Group=drevanta
+WorkingDirectory=/opt/drevanta/current/engine
+ExecStart=/opt/drevanta/current/engine/drevanta-engine --mock --addr 127.0.0.1:8080 --data /var/lib/drevanta-engine --web /opt/drevanta/current/engine/web
+Environment=HOME=/var/lib/drevanta-engine
+StateDirectory=drevanta-engine
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

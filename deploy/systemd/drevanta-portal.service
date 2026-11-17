@@ -1,0 +1,35 @@
+# Managed by Drevanta M09 installer — localhost-only preview
+[Unit]
+Description=Drevanta SvelteKit portal (localhost only)
+After=network-online.target drevanta-engine.service
+Wants=network-online.target
+Requires=drevanta-engine.service
+
+[Service]
+Type=simple
+User=drevanta
+Group=drevanta
+WorkingDirectory=/opt/drevanta/current/portal
+ExecStart=/usr/bin/env node /opt/drevanta/current/portal/build/index.js
+Environment=HOME=/var/lib/drevanta-engine
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+Environment=ORIGIN=http://127.0.0.1:3000
+Environment=DRVT_ENGINE_URL=http://127.0.0.1:8080
+Environment=BODY_SIZE_LIMIT=1048576
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
