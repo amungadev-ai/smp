@@ -89,6 +89,7 @@ func (a *API) Handler() http.Handler {
 	// unauthenticated
 	mux.HandleFunc("GET /api/v1/health", a.handleHealth)
 	mux.HandleFunc("POST /api/v1/auth/login", a.handleLogin)
+ mux.HandleFunc("POST /api/v1/auth/logout",a.authed(a.handleLogout))
 
 	// server discovery
 	mux.HandleFunc("GET /api/v1/server", a.authed(a.handleServer))
@@ -171,6 +172,14 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"token": token, "version": a.Engine.Version})
+}
+
+// Log out revokes the current token on the server; clearing browser storage
+// alone is not sufficient to invalidate a stolen bearer token.
+func (a *API) handleLogout(w http.ResponseWriter,r *http.Request){
+ a.Auth.Revoke(auth.TokenFromRequest(r))
+ w.Header().Set("Cache-Control","no-store")
+ writeJSON(w,http.StatusOK,map[string]bool{"ok":true})
 }
 
 func (a *API) handleServer(w http.ResponseWriter, r *http.Request) {

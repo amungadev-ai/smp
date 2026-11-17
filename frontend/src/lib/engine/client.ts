@@ -21,7 +21,7 @@ async function request<T>(method:string,path:string,body?:unknown):Promise<T>{
 export const engineAPI={
  health:()=>request<Health>('GET','/health'),
  login:async(password:string)=>{const response=await request<{token:string;version:string}>('POST','/auth/login',{password});saveEngineSession(response.token);return response;},
- logout:clearEngineSession,
+ logout:async()=>{try{await request<{ok:boolean}>('POST','/auth/logout',{});}finally{clearEngineSession();}},
  server:()=>request<ServerInfo>('GET','/server'),
  readiness:()=>request<{checks:ReadinessCheck[];mock_mode:boolean}>('GET','/server/readiness'),
  projects:()=>request<{projects:EngineProject[]}>('GET','/projects'),

@@ -372,3 +372,15 @@ func TestHealthEndpointShape(t *testing.T) {
 		t.Fatalf("health shape wrong: %+v", body)
 	}
 }
+
+func TestLogoutRevokesBearerAndRequiresAuth(t *testing.T){
+ h:=newHarness(t)
+ code,_:=h.get(t,"/api/v1/server")
+ if code!=200{t.Fatalf("valid session rejected: %d",code)}
+ code,_=h.do(t,"POST","/api/v1/auth/logout",nil)
+ if code!=200{t.Fatalf("logout rejected: %d",code)}
+ code,_=h.get(t,"/api/v1/server")
+ if code!=401{t.Fatalf("logged-out bearer still accepted: %d",code)}
+ code,_=h.do(t,"POST","/api/v1/auth/logout",nil)
+ if code!=401{t.Fatalf("repeated logout unexpectedly accepted: %d",code)}
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+ "time"
 )
 
 func TestLoginAndVerify(t *testing.T) {
@@ -57,4 +58,37 @@ func TestQueryTokenCannotAuthenticate(t *testing.T) {
 	if TokenFromRequest(r) != "good" {
 		t.Fatal("bearer token rejected")
 	}
+}
+
+func TestTokensUniqueAndRevoke(t *testing.T){
+ a:=New("pw")
+ one,err:=a.Login("pw","first")
+ if err!=nil{t.Fatal(err)}
+ two,err:=a.Login("pw","first")
+ if err!=nil{t.Fatal(err)}
+ if one==two||!a.Verify(one)||!a.Verify(two){t.Fatal("sessions were reused or invalid")}
+ a.Revoke(one)
+ if a.Verify(one)||!a.Verify(two){t.Fatal("logout affected the wrong session")}
+ if New("pw").Verify(two){t.Fatal("token survived engine restart")}
+}
+func TestExpiredTokenRejected(t *testing.T){
+ a:=New("pw")
+ token,err:=a.Login("pw","first")
+ if err!=nil{t.Fatal(err)}
+ id,ok:=digestToken(token)
+ if !ok{t.Fatal("invalid encoding")}
+ a.mu.Lock()
+ a.sessions[id]=time.Now().Add(-time.Minute)
+ a.mu.Unlock()
+ if a.Verify(token){t.Fatal("expired token accepted")}
+}
+func TestSessionsBounded(t *testing.T){
+ a:=New("pw")
+ for i:=0;i<maxSessions+5;i++{
+  if _,err:=a.Login("pw","first");err!=nil{t.Fatal(err)}
+ }
+ a.mu.Lock()
+ n:=len(a.sessions)
+ a.mu.Unlock()
+ if n!=maxSessions{t.Fatalf("expected %d sessions, got %d",maxSessions,n)}
 }
