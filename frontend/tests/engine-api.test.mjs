@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {consumeSSE,bytes,validProjectName,validImage,validDomain} from '../src/lib/engine/stream.js';
+test('SSE handles split frames, comments and multiline data',()=>{const lines=[],p=consumeSSE(x=>lines.push(x));p.feed(': ready\n\ndata: {"str');p.feed('eam":"stdout","message":"test"}\n\n');p.feed('data: hello\ndata: world\n\n');p.finish();assert.deepEqual(lines,['{"stream":"stdout","message":"test"}','hello\nworld']);});
+test('SSE ignores comments and empty frames',()=>{const lines=[],p=consumeSSE(x=>lines.push(x));p.feed(':ping\n\n');p.finish();assert.equal(lines.length,0);});
+test('SSE rejects unbounded input',()=>{const p=consumeSSE(()=>{});assert.throws(()=>p.feed('a'.repeat(262145)));});
+test('API input preview uses Go-compatible rules',()=>{assert.equal(validProjectName('my-app'),true);assert.equal(validProjectName('My App'),false);assert.equal(validImage('nginx:alpine'),true);assert.equal(validImage('hello;rm -rf /'),false);assert.equal(validDomain('api.example.com'),true);assert.equal(validDomain('localhost:443'),false);});
+test('safe resource formatting',()=>{assert.equal(bytes(0),'0 B');assert.equal(bytes(1024),'1.0 KB');});
