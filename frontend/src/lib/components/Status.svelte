@@ -1,1 +1,1 @@
-<script lang="ts">export let value:string;$: kind=['Live','Active','Succeeded','Secured'].includes(value)?'success':['Pending DNS','Stopped','Ready'].includes(value)?'warning':'';</script><span class="pill {kind}"><span class="dot"></span>{value}</span>
+<script lang="ts">export let value:string;$: kind=['Live','Active','Succeeded','Secured','Configured (demo)'].includes(value)?'success':['Pending DNS','Stopped','Ready','Suspended','DNS pending'].includes(value)?'warning':'';</script><span class="pill {kind}"><span class="dot"></span>{value}</span>
