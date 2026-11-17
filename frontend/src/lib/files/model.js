@@ -31,7 +31,7 @@ function requireFolder(tree,folder){if(!validPath(folder)||!Object.hasOwn(tree,f
 /** @param {Tree} tree @param {string} path */
 function requireEntry(tree,path){if(!validPath(path)||!Object.hasOwn(tree,path))throw Error('File or folder not found.');}
 /** @param {string} data */
-function validateData(data){if(typeof data!=='string'||!(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).test(data))throw Error('Invalid file data.');}
+function validateData(data){if(typeof data!=='string'||data.length%4!==0||/[^A-Za-z0-9+/=]/.test(data)||!(/^[A-Za-z0-9+/]*={0,2}$/).test(data))throw Error('Invalid file data.');}
 /** @param {Tree} tree */
 function limitEntries(tree){if(Object.keys(tree).length>MAX_ENTRIES)throw Error('Sample workspace limit: 500 entries per file tree.');}
 /** @param {Tree} tree @param {string} folder @param {string} name @param {'folder'|'file'} kind @returns {Tree} */
