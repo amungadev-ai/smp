@@ -26,3 +26,10 @@ func TestPersistentAdminPassword(t *testing.T) {
 		t.Fatal("empty file accepted")
 	}
 }
+
+func TestDedicatedCaddyURLRequired(t *testing.T){
+ for _,v:=range []string{"","http://127.0.0.1:2019","http://localhost:2021","https://127.0.0.1:2021","http://0.0.0.0:2021","http://127.0.0.1:8080","http://127.0.0.1:2021/path","http://user:pw@127.0.0.1:2021"}{
+  if err:=validateDedicatedCaddyURL(v);err==nil{t.Errorf("accepted unsafe Caddy admin URL %q",v)}
+ }
+ if err:=validateDedicatedCaddyURL("http://127.0.0.1:2021");err!=nil{t.Fatal(err)}
+}

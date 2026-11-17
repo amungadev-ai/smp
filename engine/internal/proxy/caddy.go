@@ -43,7 +43,7 @@ func (c *Caddy) probe() bool {
 		return false
 	}
 	resp.Body.Close()
-	return resp.StatusCode < 500
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
 func (c *Caddy) Mode() string {
@@ -62,6 +62,8 @@ func NewMock() *Caddy {
 }
 
 func (c *Caddy) Reachable() bool { return !c.mock }
+// Ping verifies a successful admin response; construction alone is not readiness.
+func (c *Caddy) Ping() bool { return !c.mock && c.probe() }
 
 // HasRoute reports whether a domain is currently routed (mock mirror; in real
 // mode the authoritative answer comes from ApplyConfig success).

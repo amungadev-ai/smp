@@ -3,6 +3,7 @@ import (
  "context"
  "net/http"
  "net/http/httptest"
+ "sync"
  "strings"
  "testing"
  "time"
@@ -64,4 +65,49 @@ func TestInterruptedJobRequiresExplicitRetry(t *testing.T){
  e:=New("test",t.TempDir(),st,runtime.NewMock(),proxy.NewMock())
  ctx,cancel:=context.WithCancel(context.Background());defer cancel();e.StartWorkers(ctx)
  j,_:=st.Job("interrupted");if j.Status!=model.JobFailed{t.Fatalf("job silently replayed: %+v",j)}
+}
+
+func TestRejectedCaddySwitchRestoresPreviousRouting(t *testing.T){
+ st,err:=store.Open(t.TempDir());if err!=nil{t.Fatal(err)}
+ st.AddProject(model.Project{ID:"p1",Name:"p1",Image:"nginx:alpine",Port:80})
+ st.AddDomain(model.Domain{ID:"d1",Name:"test.example.org",ProjectID:"p1",Scheme:"https"})
+ var mu sync.Mutex;calls:=0;rejectRestore:=false
+ caddy:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  mu.Lock();defer mu.Unlock();calls++
+  if calls==2||(rejectRestore&&calls==3){http.Error(w,"route update failed",503)}
+ }))
+ defer caddy.Close()
+ e:=New("test",t.TempDir(),st,runtime.NewMock(),proxy.NewWithURL(caddy.URL))
+ ctx,cancel:=context.WithCancel(context.Background());defer cancel();e.StartWorkers(ctx)
+ first,_:=e.Enqueue("p1",model.JobDeploy)
+ if j:=wait(t,st,first.ID);j.Status!=model.JobSucceeded{t.Fatal(j.Error)}
+ before,_:=st.Project("p1")
+ second,_:=e.Enqueue("p1",model.JobDeploy,"nginx:1.25")
+ fail:=wait(t,st,second.ID)
+ if fail.Status!=model.JobFailed||!strings.Contains(fail.Error,"previous route restored"){t.Fatalf("missing recovery: %+v",fail)}
+ after,_:=st.Project("p1")
+ if after.CurrentRelease!=before.CurrentRelease||after.Image!=before.Image||after.Status!=model.StatusRunning{t.Fatalf("active release changed: %+v",after)}
+ mu.Lock();n:=calls;mu.Unlock();if n!=3{t.Fatalf("expected rejected switch and restoration, got %d requests",n)}
+}
+
+func TestFailedCaddyRestoreMarksProjectDegraded(t *testing.T){
+ st,err:=store.Open(t.TempDir());if err!=nil{t.Fatal(err)}
+ st.AddProject(model.Project{ID:"p1",Name:"p1",Image:"nginx:alpine",Port:80})
+ st.AddDomain(model.Domain{ID:"d1",Name:"test.example.org",ProjectID:"p1",Scheme:"https"})
+ var mu sync.Mutex;calls:=0
+ caddy:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  mu.Lock();defer mu.Unlock();calls++;if calls>1{http.Error(w,"route update failed",503)}
+ }))
+ defer caddy.Close()
+ e:=New("test",t.TempDir(),st,runtime.NewMock(),proxy.NewWithURL(caddy.URL))
+ ctx,cancel:=context.WithCancel(context.Background());defer cancel();e.StartWorkers(ctx)
+ first,_:=e.Enqueue("p1",model.JobDeploy)
+ if j:=wait(t,st,first.ID);j.Status!=model.JobSucceeded{t.Fatal(j.Error)}
+ before,_:=st.Project("p1")
+ second,_:=e.Enqueue("p1",model.JobDeploy,"nginx:1.25")
+ fail:=wait(t,st,second.ID)
+ if fail.Status!=model.JobFailed||!strings.Contains(fail.Error,"manual recovery"){t.Fatalf("no uncertainty recorded: %+v",fail)}
+ after,_:=st.Project("p1")
+ if after.CurrentRelease!=before.CurrentRelease||after.Status!=model.StatusFailed{t.Fatalf("ambiguous route incorrectly marked running: %+v",after)}
+ mu.Lock();n:=calls;mu.Unlock();if n!=3{t.Fatalf("expected 3 Caddy requests, got %d",n)}
 }

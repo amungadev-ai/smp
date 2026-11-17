@@ -83,6 +83,13 @@ func (e *Engine) restorePreviousStatus(project model.Project){
  status:=model.StatusFailed;if project.CurrentRelease!=""{status=model.StatusRunning}
  _=e.Store.UpdateProject(project.ID,func(p *model.Project){p.Status=status})
 }
+// routingUncertain marks the project degraded if neither route switch nor
+// restoration can be confirmed. Keep the candidate for manual recovery.
+func (e *Engine) routingUncertain(jobID string,project model.Project,releaseID,msg string){
+ _=e.Store.UpdateRelease(releaseID,func(r *model.Release){r.Status=model.ReleaseFailed})
+ _=e.Store.UpdateProject(project.ID,func(p *model.Project){p.Status=model.StatusFailed})
+ e.fail(jobID,msg)
+}
 func (e *Engine) failedRelease(jobID string,project model.Project,releaseID,msg string){
  _=e.Store.UpdateRelease(releaseID,func(r *model.Release){r.Status=model.ReleaseFailed})
  e.restorePreviousStatus(project);e.fail(jobID,msg)
@@ -125,14 +132,20 @@ func (e *Engine) runDeploy(ctx context.Context,jobID string,project model.Projec
  for i:=range desired{if desired[i].ID==project.ID{desired[i].UpstreamPort=hostPort;desired[i].CurrentRelease=release.ID}}
  domains:=e.Store.Domains()
  if err:=e.Caddy.ApplyConfig(domains,desired);err!=nil{
-  e.failedRelease(jobID,project,release.ID,"Caddy routing not applied: "+err.Error());return
+  // An HTTP failure does not prove Caddy left its route unchanged.
+  // Restore the known-good configuration before removing the candidate.
+  if restoreErr:=e.Caddy.ApplyConfig(domains,previousProjects);restoreErr!=nil{
+   cleanup=false
+   e.routingUncertain(jobID,project,release.ID,"Caddy switch rejected AND restoration failed; candidate retained for manual recovery: "+err.Error()+"; "+restoreErr.Error());return
+  }
+  e.failedRelease(jobID,project,release.ID,"Caddy routing rejected; previous route restored: "+err.Error());return
  }
  e.jobLog(jobID,"Caddy accepted candidate routing; committing release")
  if err:=e.Store.ActivateRelease(project.ID,release.ID,image,hostPort,rollbackOf);err!=nil{
   // If route recovery fails, the candidate may still serve traffic. Keep it!
   if restoreErr:=e.Caddy.ApplyConfig(domains,previousProjects);restoreErr!=nil{
    cleanup=false
-   e.fail(jobID,"persistence failed AND route recovery failed; candidate retained for manual recovery: "+err.Error()+"; "+restoreErr.Error());return
+   e.routingUncertain(jobID,project,release.ID,"persistence failed AND route recovery failed; candidate retained for manual recovery: "+err.Error()+"; "+restoreErr.Error());return
   }
   e.failedRelease(jobID,project,release.ID,err.Error());return
  }

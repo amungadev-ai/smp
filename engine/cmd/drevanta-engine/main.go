@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+ "net/url"
+ "strconv"
  "net"
 	"os"
 	"os/signal"
@@ -35,6 +37,8 @@ func main() {
 	webDir := flag.String("web", "./web", "mini console directory")
 	forceMock := flag.Bool("mock", false, "force mock mode even if the docker socket exists")
 	liveRequested := flag.Bool("live", false, "explicitly enable Docker and Caddy on a disposable test VPS")
+ caddyAdmin := flag.String("caddy-admin","","dedicated Caddy admin URL (required for live): http://127.0.0.1:2021")
+ ackDisposable := flag.Bool("ack-disposable-vps",false,"acknowledge this replaces the dedicated Caddy configuration on a disposable VPS")
 	flag.Parse()
 
 	log.Printf("Drevanta engine v%s — discovering local VPS…", engineVersion)
@@ -53,8 +57,10 @@ func main() {
     if *liveRequested && !*forceMock {
         host,_,err:=net.SplitHostPort(*addr)
         if err!=nil||net.ParseIP(host)==nil||!net.ParseIP(host).IsLoopback(){log.Fatal("--live requires a loopback-bound --addr (127.0.0.1:8080)")}
-        d=runtime.New();c=proxy.New()
-        if d.Mode()!=runtime.ModeDocker||c.Mode()!=proxy.ModeCaddy{log.Fatal("--live requires Docker socket and dedicated Caddy admin API")}
+        if !*ackDisposable{log.Fatal("--live requires --ack-disposable-vps (test server only)")}
+        if err:=validateDedicatedCaddyURL(*caddyAdmin);err!=nil{log.Fatalf("--live caddy admin: %v",err)}
+        d=runtime.New();c=proxy.NewWithURL(*caddyAdmin)
+        if d.Mode()!=runtime.ModeDocker||!c.Ping(){log.Fatal("--live requires Docker and a reachable dedicated Caddy admin API")}
         if err:=d.Ping();err!=nil{log.Fatalf("Docker readiness: %v",err)}
         if err:=c.ApplyConfig(st.Domains(),st.Projects());err!=nil{log.Fatalf("Caddy startup reconciliation: %v",err)}
         log.Print("M08B live mode explicitly enabled; use a disposable test VPS")
@@ -195,4 +201,18 @@ func loadOrCreatePassword(dir, explicit string) (string, bool, error) {
 		return "", false, err
 	}
 	return pw, true, nil
+}
+
+// validateDedicatedCaddyURL refuses the default shared Caddy admin :2019.
+// POST /load overwrites the entire selected Caddy instance configuration.
+func validateDedicatedCaddyURL(raw string)error{
+ u,err:=url.Parse(raw)
+ if err!=nil||u==nil||u.Scheme!="http"||u.User!=nil||u.Hostname()!="127.0.0.1"||u.Path!=""||u.RawQuery!=""||u.Fragment!=""{
+  return fmt.Errorf("use an explicit dedicated loopback URL e.g. http://127.0.0.1:2021")
+ }
+ port,err:=strconv.Atoi(u.Port())
+ if err!=nil||port<2020||port>65535||port==8080{
+  return fmt.Errorf("dedicated Caddy port must be 2020–65535 except the engine port; stock :2019 is forbidden")
+ }
+ return nil
 }
