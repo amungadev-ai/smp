@@ -8,3 +8,6 @@ export function initDatabases(){try{const raw=localStorage.getItem(KEY);if(raw){
 export function command(c:Command){if((c.type==='create'||c.type==='link')&&c.project&&!get(workspace).projects.some(p=>p.id===c.project))throw Error('Project not found.');databaseState.update(s=>reduceDatabase(s,c,new Date().toISOString()));}
 export function samplePassword(){const b=new Uint8Array(18);globalThis.crypto.getRandomValues(b);return 'Demo-'+Array.from(b,x=>x.toString(16).padStart(2,'0')).join('')+'!';}
 export function validatePassword(p:string){if(p.length<8||p.length>128)throw Error('Enter a sample password of 8–128 characters.');}
+
+// Used only while creating a new WordPress project. The project is not visible yet.
+export function stageDatabase(c:Extract<Command,{type:'create'}>){const before=get(databaseState),next=reduceDatabase(before,c,new Date().toISOString());try{localStorage.setItem(KEY,JSON.stringify(next));}catch{throw Error('Browser database storage is unavailable.');}databaseState.set(next);return ()=>{localStorage.setItem(KEY,JSON.stringify(before));databaseState.set(before);};}

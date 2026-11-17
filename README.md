@@ -13,8 +13,8 @@ npm run dev
 Open http://localhost:5173. The native portal is a development preview; data and deployments are simulated. The original v0.16 prototype is available at /reference/v016.html and is the design reference for pending modules.
 
 ## Scope
-Dashboard, sidebar, breadcrumbs, five palettes, projects, simulated container releases, logs and rollback, independent domain inventory, server and settings. Native database management is included (simulated). Native storage and file management are included (browser samples). Browser ZIP inspection and application detection are included. Native email management and standalone webmail are included (browser samples). Other resource modules still require migration, then API integration. No privileged server operations are exposed.
+Dashboard, sidebar, breadcrumbs, five palettes, projects, simulated container releases, logs and rollback, independent domain inventory, server and settings. Native database management is included (simulated). Native storage and file management are included (browser samples). Browser ZIP inspection and application detection are included. Native email management and standalone webmail are included (browser samples). Native website hosting workflows are included (drafts and readiness previews). Other resource modules still require migration, then API integration. No privileged server operations are exposed.
 
 Never commit secrets, real credentials or server state. This is not a production installer.
 
-Run `npm test` from `frontend/` for database, file state, application detection and mail state tests. See `frontend/MIGRATION.md` for scope.
+Run `npm test` from `frontend/` for database, file state, application detection, mail state and website tests. See `frontend/MIGRATION.md` for scope.
