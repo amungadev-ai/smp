@@ -77,6 +77,7 @@ type Project struct {
 	Status         string `json:"status"`
 	Created        string `json:"created"`
 	CurrentRelease string `json:"current_release,omitempty"`
+	UpstreamPort int `json:"upstream_port,omitempty"`
 	ReleaseCount   int    `json:"release_count"`
 }
 
@@ -90,6 +91,8 @@ type Release struct {
 	HealthOK        *bool  `json:"health_ok,omitempty"`
 	HealthLatencyMS int64  `json:"health_latency_ms,omitempty"`
 	RolledBackTo    string `json:"rolled_back_to,omitempty"`
+	HostPort int `json:"host_port,omitempty"`
+	ContainerID string `json:"container_id,omitempty"`
 }
 
 type JobLogLine struct {
@@ -114,6 +117,7 @@ type Job struct {
 	Finished  string       `json:"finished,omitempty"`
 	Error     string       `json:"error,omitempty"`
 	ReleaseID string       `json:"release_id,omitempty"`
+	Image string `json:"image,omitempty"`
 	Log       []JobLogLine `json:"log"`
 }
 

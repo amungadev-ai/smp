@@ -15,6 +15,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+ "strings"
+ "net/url"
 	"sync"
 	"time"
 
@@ -100,7 +102,10 @@ func (d *Docker) Version() (string, error) {
 
 // call performs a request against the unix socket.
 func (d *Docker) call(method, path string, body io.Reader, timeout time.Duration) (*http.Response, error) {
-	req, err := http.NewRequest(method, "http://docker"+path, body)
+ return d.callCtx(context.Background(),method,path,body,timeout)
+}
+func (d *Docker) callCtx(ctx context.Context,method,path string,body io.Reader,timeout time.Duration)(*http.Response,error){
+ req,err:=http.NewRequestWithContext(ctx,method,"http://docker"+path,body)
 	if err != nil {
 		return nil, err
 	}
@@ -123,8 +128,8 @@ func (d *Docker) Pull(ctx context.Context, image string) error {
 		return nil
 	}
 	image, tag := splitImage(image)
-	reqPath := fmt.Sprintf("/images/create?fromImage=%s&tag=%s", image, tag)
-	resp, err := d.call(http.MethodPost, reqPath, nil, 0)
+	reqPath := fmt.Sprintf("/images/create?fromImage=%s&tag=%s", url.QueryEscape(image), url.QueryEscape(tag))
+ resp,err:=d.callCtx(ctx,http.MethodPost,reqPath,nil,0)
 	if err != nil {
 		return err
 	}
@@ -145,7 +150,8 @@ func (d *Docker) Pull(ctx context.Context, image string) error {
 			return fmt.Errorf("docker pull error: %s", line.Error)
 		}
 	}
-	return nil
+ if err:=sc.Err();err!=nil{return fmt.Errorf("docker pull stream: %w",err)}
+ return ctx.Err()
 }
 
 func splitImage(image string) (name, tag string) {
@@ -381,8 +387,9 @@ func (d *Docker) broadcast(project string, line model.LogLine) {
 // followLogs tails the container log stream and demultiplexes Docker's
 // 8-byte-frame format (stream byte + 4-byte big-endian length).
 func (d *Docker) followLogs(ctx context.Context, project string) {
-	name := ContainerName(project)
-	for {
+	name:=ContainerName(project)
+ if parts:=strings.SplitN(project,"::",2);len(parts)==2{name=ReleaseContainerName(parts[0],parts[1])}
+ for {
 		select {
 		case <-ctx.Done():
 			return
@@ -394,6 +401,7 @@ func (d *Docker) followLogs(ctx context.Context, project string) {
 			time.Sleep(2 * time.Second)
 			continue
 		}
+        if resp.StatusCode!=http.StatusOK {resp.Body.Close();select{case <-ctx.Done():return;case <-time.After(2*time.Second):};continue}
 		br := bufio.NewReader(resp.Body)
 		header := make([]byte, 8)
 		for {
@@ -401,6 +409,7 @@ func (d *Docker) followLogs(ctx context.Context, project string) {
 				break
 			}
 			length := int(binary.BigEndian.Uint32(header[4:8]))
+            if length>1<<20 {break}
 			payload := make([]byte, length)
 			if _, err := io.ReadFull(br, payload); err != nil {
 				break

@@ -17,6 +17,7 @@ import (
 	"drevanta/engine/internal/auth"
 	"drevanta/engine/internal/jobs"
 	"drevanta/engine/internal/model"
+ "drevanta/engine/internal/runtime"
 	"drevanta/engine/internal/serverinfo"
 	"drevanta/engine/internal/store"
 )
@@ -73,9 +74,6 @@ func readBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 }
 
 func clientIP(r *http.Request) string {
-	if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
-		return strings.TrimSpace(strings.Split(xf, ",")[0])
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
@@ -282,6 +280,7 @@ func (a *API) handleProjectDelete(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, 404, "project not found")
 		return
 	}
+    if a.Engine.Docker.Mode()!=runtime.ModeMock {errJSON(w,409,"live project deletion is locked pending transactional route removal");return}
 	_ = a.Engine.Docker.Stop(p.Name)
 	// detach routed domains and re-apply caddy
 	for _, d := range a.Store.Domains() {
@@ -317,11 +316,8 @@ func (a *API) handleRedeploy(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, 404, "project not found")
 		return
 	}
-	if err := a.Store.UpdateProject(id, func(p *model.Project) { p.Image = image }); err != nil {
-		errJSON(w, 500, err.Error())
-		return
-	}
-	job, err := a.Engine.Enqueue(id, model.JobDeploy)
+    // The requested image belongs to the job, not the active project.
+ job,err:=a.Engine.Enqueue(id,model.JobDeploy,image)
 	if err != nil {
 		errJSON(w, 500, err.Error())
 		return
@@ -386,6 +382,7 @@ func (a *API) handleDomains(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleDomainAdd(w http.ResponseWriter, r *http.Request) {
+ if a.Engine.Docker.Mode()!=runtime.ModeMock {errJSON(w,409,"live domain edits are locked pending transactional route removal");return}
 	var body struct {
 		Name      string `json:"name"`
 		ProjectID string `json:"project_id"`
@@ -430,6 +427,7 @@ func (a *API) handleDomainAdd(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleDomainDelete(w http.ResponseWriter, r *http.Request) {
+ if a.Engine.Docker.Mode()!=runtime.ModeMock {errJSON(w,409,"live domain edits are locked pending transactional route removal");return}
 	id := r.PathValue("id")
 	var removed model.Domain
 	found := false
@@ -472,7 +470,9 @@ func (a *API) handleLogsStream(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, ": drevanta log stream\n\n")
 	flusher.Flush()
 
-	lines, unsub := a.Engine.Docker.StreamLogs(projectID)
+    project,_:=a.Store.Project(projectID)
+ if project.CurrentRelease=="" {fmt.Fprint(w,`data: {"stream":"engine","message":"No active release"}\n\n`);flusher.Flush();return}
+ lines,unsub:=a.Engine.Docker.StreamLogs(projectID+"::"+project.CurrentRelease)
 	defer unsub()
 
 	heartbeat := time.NewTicker(15 * time.Second)

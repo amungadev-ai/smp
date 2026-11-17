@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+ "net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -25,7 +26,7 @@ import (
 	"drevanta/engine/internal/store"
 )
 
-const engineVersion = "0.1.0"
+const engineVersion = "0.2.0-dev"
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "listen address")
@@ -33,7 +34,7 @@ func main() {
 	password := flag.String("password", "", "admin password (else DRVT_ADMIN_PASSWORD env, else generated)")
 	webDir := flag.String("web", "./web", "mini console directory")
 	forceMock := flag.Bool("mock", false, "force mock mode even if the docker socket exists")
-	liveRequested := flag.Bool("live", false, "enable live Docker and Caddy operations (not yet available in M08A)")
+	liveRequested := flag.Bool("live", false, "explicitly enable Docker and Caddy on a disposable test VPS")
 	flag.Parse()
 
 	log.Printf("Drevanta engine v%s — discovering local VPS…", engineVersion)
@@ -45,14 +46,22 @@ func main() {
 	}
 	log.Printf("state: %s", st.Path())
 
-	// M08A is a mock integration milestone. Refuse live operations until
-	// the release-specific container / Caddy traffic-switch safety checks land.
-	if *liveRequested && !*forceMock {
-		log.Fatal("live Docker/Caddy operations are locked until M08C safety verification; use --mock for local testing")
-	}
-	d := runtime.NewMock()
-	c := proxy.NewMock()
-	log.Print("M08A safety gate: Docker and Caddy operations disabled (mock mode)")
+    // Safe default: mock mode unless --live is explicitly supplied.
+    // Live mode requires a dedicated Caddy instance and loopback admin API.
+    var d *runtime.Docker
+    var c *proxy.Caddy
+    if *liveRequested && !*forceMock {
+        host,_,err:=net.SplitHostPort(*addr)
+        if err!=nil||net.ParseIP(host)==nil||!net.ParseIP(host).IsLoopback(){log.Fatal("--live requires a loopback-bound --addr (127.0.0.1:8080)")}
+        d=runtime.New();c=proxy.New()
+        if d.Mode()!=runtime.ModeDocker||c.Mode()!=proxy.ModeCaddy{log.Fatal("--live requires Docker socket and dedicated Caddy admin API")}
+        if err:=d.Ping();err!=nil{log.Fatalf("Docker readiness: %v",err)}
+        if err:=c.ApplyConfig(st.Domains(),st.Projects());err!=nil{log.Fatalf("Caddy startup reconciliation: %v",err)}
+        log.Print("M08B live mode explicitly enabled; use a disposable test VPS")
+    } else {
+        d=runtime.NewMock();c=proxy.NewMock()
+        log.Print("mock mode (safe default): Docker and Caddy unchanged")
+    }
 
 	mode := d.Mode()
 	log.Printf("runtime mode: %s (docker socket %s)", mode, func() string {

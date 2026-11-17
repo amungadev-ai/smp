@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+ "io"
 	"sync"
 	"time"
 
@@ -52,6 +53,9 @@ func (c *Caddy) Mode() string {
 	return ModeCaddy
 }
 
+// NewWithURL targets a dedicated Caddy admin endpoint (also used for tests).
+func NewWithURL(url string)*Caddy{return &Caddy{adminURL:url,client:&http.Client{Timeout:5*time.Second}}}
+
 // NewMock forces simulated routing (lab/CI use, or --mock flag).
 func NewMock() *Caddy {
 	return &Caddy{adminURL: AdminURL, client: &http.Client{Timeout: 5 * time.Second}, mock: true}
@@ -80,9 +84,7 @@ func (c *Caddy) ApplyConfig(domains []model.Domain, projects []model.Project) er
 		c.mu.Lock()
 		c.routes = c.routes[:0]
 		for _, d := range domains {
-			if d.ProjectID != "" {
-				c.routes = append(c.routes, d.Name)
-			}
+            for _,p:=range projects{if d.ProjectID==p.ID && p.CurrentRelease!="" && p.UpstreamPort>0 {c.routes=append(c.routes,d.Name);break}}
 		}
 		c.mu.Unlock()
 		return nil
@@ -93,7 +95,8 @@ func (c *Caddy) ApplyConfig(domains []model.Domain, projects []model.Project) er
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("caddy /load returned %d", resp.StatusCode)
+		raw,_:=io.ReadAll(io.LimitReader(resp.Body,1024))
+        return fmt.Errorf("caddy /load returned %d: %s", resp.StatusCode,string(raw))
 	}
 	return nil
 }
@@ -114,14 +117,14 @@ func BuildCaddyfile(domains []model.Domain, projects []model.Project) string {
 			continue
 		}
 		p, ok := byID[d.ProjectID]
-		if !ok {
+		if !ok || p.CurrentRelease=="" || p.UpstreamPort<1 || p.UpstreamPort>65535 {
 			continue
 		}
 		host := d.Name
 		if d.Scheme != "https" {
 			host = "http://" + d.Name
 		}
-		fmt.Fprintf(&out, "%s {\n\treverse_proxy 127.0.0.1:%d\n}\n\n", host, p.Port)
+		fmt.Fprintf(&out, "%s {\n\treverse_proxy 127.0.0.1:%d\n}\n\n", host, p.UpstreamPort)
 	}
 	return out.String()
 }

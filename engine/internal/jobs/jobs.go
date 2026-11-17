@@ -1,317 +1,191 @@
-// Package jobs runs deployment, rollback and restart workflows on background
-// workers. This is the heart of M01: pull → run → health → Caddy → release
-// history, with every step recorded on the job.
+// Package jobs stages release-specific containers and switches Caddy only
+// after health checks, without disrupting the previous running release.
 package jobs
 
 import (
-	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
-	"sync"
-	"time"
-
-	"drevanta/engine/internal/healthcheck"
-	"drevanta/engine/internal/model"
-	"drevanta/engine/internal/proxy"
-	"drevanta/engine/internal/runtime"
-	"drevanta/engine/internal/store"
+ "context"
+ "crypto/rand"
+ "encoding/hex"
+ "fmt"
+ "path/filepath"
+ "sync"
+ "time"
+ "drevanta/engine/internal/healthcheck"
+ "drevanta/engine/internal/model"
+ "drevanta/engine/internal/proxy"
+ "drevanta/engine/internal/runtime"
+ "drevanta/engine/internal/store"
 )
 
 const (
-	pullTimeout     = 10 * time.Minute
-	startTimeout    = 2 * time.Minute
-	healthAttempts  = 20
-	healthPause     = 500 * time.Millisecond
-	workerCount     = 2
-	releasePerProject = 50
+ pullTimeout=10*time.Minute
+ startTimeout=2*time.Minute
+ healthAttempts=20
+ healthPause=500*time.Millisecond
+ // Whole-config Caddy updates and deployments are serialized for safety.
+ workerCount=1
+ retainedContainers=2
 )
-
-// Engine ties the store, runtime, proxy and workers together.
-type Engine struct {
-	Version  string
-	DataDir  string
-	Store    *store.Store
-	Docker   *runtime.Docker
-	Caddy    *proxy.Caddy
-
-	queue chan string
-	mu    sync.Mutex
+type Engine struct{
+ Version string
+ DataDir string
+ Store *store.Store
+ Docker *runtime.Docker
+ Caddy *proxy.Caddy
+ queue chan string
+ mu sync.Mutex
 }
-
-func New(version, dataDir string, st *store.Store, d *runtime.Docker, c *proxy.Caddy) *Engine {
-	return &Engine{
-		Version: version,
-		DataDir: dataDir,
-		Store:   st,
-		Docker:  d,
-		Caddy:   c,
-		queue:   make(chan string, 128),
-	}
+func New(version,dataDir string,st *store.Store,d *runtime.Docker,c *proxy.Caddy)*Engine{
+ return &Engine{Version:version,DataDir:dataDir,Store:st,Docker:d,Caddy:c,queue:make(chan string,128)}
 }
-
-// StartWorkers launches the background worker pool. Cancel ctx to stop.
-func (e *Engine) StartWorkers(ctx context.Context) {
-	for i := 0; i < workerCount; i++ {
-		go e.worker(ctx)
-	}
+func (e *Engine) StartWorkers(ctx context.Context){
+ for i:=0;i<workerCount;i++{go e.worker(ctx)}
+ // Queued jobs resume; an interrupted running job is failed, never replayed
+ // against live infrastructure without an explicit user retry.
+ for _,j:=range e.Store.Jobs(""){
+  if j.Status==model.JobRunning{e.fail(j.ID,"engine restarted while job was running; retry explicitly")}
+  if j.Status==model.JobQueued{select{case e.queue<-j.ID:default:e.fail(j.ID,"recovery queue full")}}
+ }
 }
-
-func newID() string {
-	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b)
+func newID()string{var b [8]byte;if _,err:=rand.Read(b[:]);err!=nil{return fmt.Sprintf("%d",time.Now().UnixNano())};return hex.EncodeToString(b[:])}
+func (e *Engine) Enqueue(projectID,kind string,image ...string)(*model.Job,error){
+ project,ok:=e.Store.Project(projectID);if !ok{return nil,fmt.Errorf("project %s not found",projectID)}
+ if kind!=model.JobDeploy&&kind!=model.JobRollback&&kind!=model.JobRestart{return nil,fmt.Errorf("unknown job kind")}
+ requested:=project.Image;if len(image)>0{requested=image[0]}
+ e.mu.Lock();defer e.mu.Unlock()
+ if len(e.queue)>=cap(e.queue){return nil,fmt.Errorf("deployment queue full")}
+ job:=model.Job{ID:newID(),ProjectID:projectID,Kind:kind,Image:requested,Status:model.JobQueued,Created:model.Now()}
+ if err:=e.Store.AddJob(job);err!=nil{return nil,err}
+ e.queue<-job.ID;return &job,nil
 }
-
-// Enqueue creates a job record and pushes it onto the worker queue.
-func (e *Engine) Enqueue(projectID, kind string) (*model.Job, error) {
-	if _, ok := e.Store.Project(projectID); !ok {
-		return nil, fmt.Errorf("project %s not found", projectID)
-	}
-	job := model.Job{
-		ID:        newID(),
-		ProjectID: projectID,
-		Kind:      kind,
-		Status:    model.JobQueued,
-		Created:   model.Now(),
-	}
-	if err := e.Store.AddJob(job); err != nil {
-		return nil, err
-	}
-	e.queue <- job.ID
-	return &job, nil
+func (e *Engine) worker(ctx context.Context){for{select{case <-ctx.Done():return;case id:=<-e.queue:e.run(ctx,id)}}}
+func (e *Engine) jobLog(id,msg string){_=e.Store.UpdateJob(id,func(j *model.Job){j.Log=append(j.Log,model.JobLogLine{TS:model.Now(),Message:msg})})}
+func (e *Engine) fail(id,msg string){_=e.Store.UpdateJob(id,func(j *model.Job){j.Status=model.JobFailed;j.Error=msg;j.Finished=model.Now();j.Log=append(j.Log,model.JobLogLine{TS:model.Now(),Message:"FAILED: "+msg})})}
+func (e *Engine) succeed(id string){_=e.Store.UpdateJob(id,func(j *model.Job){j.Status=model.JobSucceeded;j.Finished=model.Now()})}
+func (e *Engine) run(ctx context.Context,id string){
+ if ctx.Err()!=nil{return}
+ job,ok:=e.Store.Job(id);if !ok||job.Status!=model.JobQueued{return}
+ if err:=e.Store.UpdateJob(id,func(j *model.Job){j.Status=model.JobRunning;j.Started=model.Now()});err!=nil{return}
+ project,ok:=e.Store.Project(job.ProjectID);if !ok{e.fail(id,"project vanished");return}
+ switch job.Kind{
+ case model.JobDeploy:img:=job.Image;if img==""{img=project.Image};e.runDeploy(ctx,id,project,img,"")
+ case model.JobRollback:e.runRollback(ctx,id,project)
+ case model.JobRestart:e.runRestart(ctx,id,project)
+ }
 }
-
-func (e *Engine) worker(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case id := <-e.queue:
-			e.run(ctx, id)
-		}
-	}
+func splitImage(image string)(string,string){
+ tag:="latest"
+ for i:=len(image)-1;i>=0;i--{if image[i]=='/'{break};if image[i]==':'{return image[:i],image[i+1:]}}
+ return image,tag
 }
-
-func (e *Engine) jobLog(jobID, msg string) {
-	e.Store.UpdateJob(jobID, func(j *model.Job) {
-		j.Log = append(j.Log, model.JobLogLine{TS: model.Now(), Message: msg})
-	})
+func fullImage(r model.Release)string{return r.Image+":"+r.Tag}
+func (e *Engine) restorePreviousStatus(project model.Project){
+ status:=model.StatusFailed;if project.CurrentRelease!=""{status=model.StatusRunning}
+ _=e.Store.UpdateProject(project.ID,func(p *model.Project){p.Status=status})
 }
-
-func (e *Engine) fail(jobID, msg string) {
-	e.Store.UpdateJob(jobID, func(j *model.Job) {
-		j.Status = model.JobFailed
-		j.Error = msg
-		j.Finished = model.Now()
-		j.Log = append(j.Log, model.JobLogLine{TS: model.Now(), Message: "FAILED: " + msg})
-	})
+func (e *Engine) failedRelease(jobID string,project model.Project,releaseID,msg string){
+ _=e.Store.UpdateRelease(releaseID,func(r *model.Release){r.Status=model.ReleaseFailed})
+ e.restorePreviousStatus(project);e.fail(jobID,msg)
 }
-
-func (e *Engine) succeed(jobID string) {
-	e.Store.UpdateJob(jobID, func(j *model.Job) {
-		j.Status = model.JobSucceeded
-		j.Finished = model.Now()
-	})
+func (e *Engine) runDeploy(ctx context.Context,jobID string,project model.Project,image,rollbackOf string){
+ name,tag:=splitImage(image)
+ release:=model.Release{ID:newID(),ProjectID:project.ID,Image:name,Tag:tag,Status:model.ReleaseDeploying,Created:model.Now(),RolledBackTo:rollbackOf}
+ if err:=e.Store.AddRelease(release);err!=nil{e.fail(jobID,"persist release: "+err.Error());return}
+ _=e.Store.UpdateJob(jobID,func(j *model.Job){j.ReleaseID=release.ID})
+ _=e.Store.UpdateProject(project.ID,func(p *model.Project){p.Status=model.StatusDeploying})
+ e.jobLog(jobID,"pulling "+image)
+ pullCtx,cancel:=context.WithTimeout(ctx,pullTimeout)
+ err:=e.Docker.Pull(pullCtx,image);cancel()
+ if err!=nil{e.failedRelease(jobID,project,release.ID,"pull: "+err.Error());return}
+ e.jobLog(jobID,"starting isolated release "+release.ID)
+ runCtx,cancel:=context.WithTimeout(ctx,startTimeout)
+ containerID,hostPort,err:=e.Docker.StartRelease(runCtx,project,release,image);cancel()
+ if err!=nil{e.failedRelease(jobID,project,release.ID,"start: "+err.Error());return}
+ // On failure, destroy only the new candidate; never delete the active one.
+ cleanup:=true
+ defer func(){if cleanup{
+  cc,done:=context.WithTimeout(context.Background(),30*time.Second);defer done()
+  if err:=e.Docker.StopRelease(cc,project.ID,release.ID);err!=nil{e.jobLog(jobID,"candidate cleanup warning: "+err.Error())}
+ }}()
+ if err:=e.Store.UpdateRelease(release.ID,func(r *model.Release){r.HostPort=hostPort;r.ContainerID=containerID});err!=nil{
+  e.failedRelease(jobID,project,release.ID,"persist candidate: "+err.Error());return
+ }
+ e.jobLog(jobID,fmt.Sprintf("candidate on 127.0.0.1:%d; waiting for HTTP health",hostPort))
+ healthy,latency,herr:=e.checkHealth(ctx,hostPort)
+ if !healthy{
+  _=e.Store.UpdateRelease(release.ID,func(r *model.Release){r.Status=model.ReleaseUnhealthy;r.HealthOK=&healthy})
+  e.restorePreviousStatus(project);e.fail(jobID,"health check: "+safe(herr));return
+ }
+ _=e.Store.UpdateRelease(release.ID,func(r *model.Release){r.HealthOK=&healthy;r.HealthLatencyMS=latency})
+ e.jobLog(jobID,fmt.Sprintf("candidate healthy in %d ms",latency))
+ // Caddy sees the desired release target before the state marks it current.
+ // On Caddy failure, the prior route remains in effect.
+ previousProjects:=e.Store.Projects()
+ desired:=append([]model.Project(nil),previousProjects...)
+ for i:=range desired{if desired[i].ID==project.ID{desired[i].UpstreamPort=hostPort;desired[i].CurrentRelease=release.ID}}
+ domains:=e.Store.Domains()
+ if err:=e.Caddy.ApplyConfig(domains,desired);err!=nil{
+  e.failedRelease(jobID,project,release.ID,"Caddy routing not applied: "+err.Error());return
+ }
+ e.jobLog(jobID,"Caddy accepted candidate routing; committing release")
+ if err:=e.Store.ActivateRelease(project.ID,release.ID,image,hostPort,rollbackOf);err!=nil{
+  // If route recovery fails, the candidate may still serve traffic. Keep it!
+  if restoreErr:=e.Caddy.ApplyConfig(domains,previousProjects);restoreErr!=nil{
+   cleanup=false
+   e.fail(jobID,"persistence failed AND route recovery failed; candidate retained for manual recovery: "+err.Error()+"; "+restoreErr.Error());return
+  }
+  e.failedRelease(jobID,project,release.ID,err.Error());return
+ }
+ cleanup=false
+ e.jobLog(jobID,"active release changed; prior healthy release remained running during switch")
+ e.succeed(jobID)
+ e.reapOldReleases(project.ID,release.ID,jobID)
+ if e.Caddy.Mode()==proxy.ModeCaddy&&e.DataDir!=""{
+  cfg:=proxy.BuildCaddyfile(domains,e.Store.Projects())
+  if err:=writeFile(filepath.Join(e.DataDir,"Caddyfile"),[]byte(cfg));err!=nil{
+   e.jobLog(jobID,"Caddyfile mirror warning: "+err.Error())
+  }
+ }
 }
-
-func (e *Engine) run(ctx context.Context, jobID string) {
-	if ctx.Err() != nil {
-		return // shutting down — job stays queued for the next boot
-	}
-	job, ok := e.Store.Job(jobID)
-	if !ok {
-		return
-	}
-	e.Store.UpdateJob(jobID, func(j *model.Job) { j.Status = model.JobRunning; j.Started = model.Now() })
-
-	project, ok := e.Store.Project(job.ProjectID)
-	if !ok {
-		e.fail(jobID, "project vanished from state")
-		return
-	}
-
-	switch job.Kind {
-	case model.JobDeploy:
-		e.runDeploy(ctx, jobID, project, project.Image, "")
-	case model.JobRollback:
-		e.runRollback(ctx, jobID, project)
-	case model.JobRestart:
-		e.runRestart(ctx, jobID, project)
-	default:
-		e.fail(jobID, "unknown job kind "+job.Kind)
-	}
+func (e *Engine) reapOldReleases(projectID,activeID,jobID string){
+ releases:=e.Store.Releases(projectID);kept:=0
+ for i:=len(releases)-1;i>=0;i--{
+  r:=releases[i]
+  if r.Status!=model.ReleaseHealthy&&r.Status!=model.ReleaseRolledBack{continue}
+  kept++
+  if kept<=retainedContainers||r.ID==activeID{continue}
+  cc,done:=context.WithTimeout(context.Background(),30*time.Second)
+  err:=e.Docker.StopRelease(cc,projectID,r.ID);done()
+  if err!=nil{e.jobLog(jobID,"old release cleanup warning: "+err.Error())}
+ }
 }
-
-// runDeploy executes one release of image. rollbackReuseID names an existing
-// release to deploy again (rollback path).
-func (e *Engine) runDeploy(ctx context.Context, jobID string, project model.Project, image string, reuseReleaseID string) {
-	tag := "latest"
-	for i := len(image) - 1; i > 0; i-- {
-		if image[i] == '/' {
-			break
-		}
-		if image[i] == ':' {
-			tag = image[i+1:]
-			image = image[:i]
-			break
-		}
-	}
-
-	release := model.Release{
-		ID:        newID(),
-		ProjectID: project.ID,
-		Image:     image,
-		Tag:       tag,
-		Created:   model.Now(),
-		Status:    model.ReleaseDeploying,
-	}
-	if err := e.Store.AddRelease(release); err != nil {
-		e.fail(jobID, "persist release: "+err.Error())
-		return
-	}
-	e.Store.UpdateJob(jobID, func(j *model.Job) { j.ReleaseID = release.ID })
-	e.Store.UpdateProject(project.ID, func(p *model.Project) { p.Status = model.StatusDeploying })
-	e.jobLog(jobID, fmt.Sprintf("pulling %s:%s", image, tag))
-
-	pullCtx, cancel := context.WithTimeout(ctx, pullTimeout)
-	defer cancel()
-	if err := e.Docker.Pull(pullCtx, release.Image+":"+tag); err != nil {
-		e.Store.UpdateRelease(release.ID, func(r *model.Release) { r.Status = model.ReleaseFailed })
-		e.Store.UpdateProject(project.ID, func(p *model.Project) { p.Status = model.StatusFailed })
-		e.fail(jobID, "pull: "+err.Error())
-		return
-	}
-
-	e.jobLog(jobID, "starting container")
-	runCtx, cancel2 := context.WithTimeout(ctx, startTimeout)
-	defer cancel2()
-	_, hostPort, err := e.Docker.EnsureRunning(runCtx, project)
-	if err != nil {
-		e.Store.UpdateRelease(release.ID, func(r *model.Release) { r.Status = model.ReleaseFailed })
-		e.Store.UpdateProject(project.ID, func(p *model.Project) { p.Status = model.StatusFailed })
-		e.fail(jobID, "start: "+err.Error())
-		return
-	}
-	e.jobLog(jobID, fmt.Sprintf("container up — health probing port %d", hostPort))
-
-	healthy, latency, herr := e.checkHealth(ctx, hostPort)
-	if !healthy {
-		e.Store.UpdateRelease(release.ID, func(r *model.Release) {
-			r.Status = model.ReleaseUnhealthy
-			r.HealthOK = &healthy
-		})
-		e.Store.UpdateProject(project.ID, func(p *model.Project) { p.Status = model.StatusFailed })
-		e.fail(jobID, "health check failed: "+safe(herr))
-		return
-	}
-	e.Store.UpdateRelease(release.ID, func(r *model.Release) {
-		r.Status = model.ReleaseHealthy
-		r.HealthOK = &healthy
-		r.HealthLatencyMS = latency
-	})
-	e.jobLog(jobID, fmt.Sprintf("healthy in %d ms", latency))
-
-	if reuseReleaseID != "" {
-		e.Store.UpdateRelease(reuseReleaseID, func(r *model.Release) { r.Status = model.ReleaseRolledBack })
-	}
-
-	// routing: keep Caddy in sync with every domain that points at a project
-	if project.Domain != "" {
-		e.jobLog(jobID, "updating Caddy routing")
-		e.syncCaddy(jobID)
-	}
-
-	releaseCount := len(e.Store.Releases(project.ID)) // read BEFORE UpdateProject (store locks are not reentrant)
-	e.Store.UpdateProject(project.ID, func(p *model.Project) {
-		p.Status = model.StatusRunning
-		p.CurrentRelease = release.ID
-		p.ReleaseCount = releaseCount
-	})
-	e.succeed(jobID)
+func (e *Engine) runRollback(ctx context.Context,jobID string,project model.Project){
+ if project.CurrentRelease==""{e.fail(jobID,"no active release to roll back to");return}
+ releases:=e.Store.Releases(project.ID)
+ for i:=len(releases)-1;i>=0;i--{
+  r:=releases[i]
+  if r.ID==project.CurrentRelease||r.Status!=model.ReleaseHealthy&&r.Status!=model.ReleaseRolledBack{continue}
+  e.jobLog(jobID,"rolling back to "+fullImage(r)+" from release "+r.ID)
+  e.runDeploy(ctx,jobID,project,fullImage(r),r.ID);return
+ }
+ e.fail(jobID,"no previous healthy release to roll back to")
 }
-
-// runRollback redeploys the previous healthy release.
-func (e *Engine) runRollback(ctx context.Context, jobID string, project model.Project) {
-	releases := e.Store.Releases(project.ID)
-	var target *model.Release
-	for i := len(releases) - 1; i >= 0; i-- {
-		r := releases[i]
-		if r.ID != project.CurrentRelease && (r.Status == model.ReleaseHealthy || r.Status == model.ReleaseRolledBack) {
-			target = &r
-			break
-		}
-	}
-	if target == nil {
-		e.fail(jobID, "no previous healthy release to roll back to")
-		return
-	}
-	e.jobLog(jobID, fmt.Sprintf("rolling back to %s:%s", target.Image, target.Tag))
-	e.runDeploy(ctx, jobID, project, target.Image+":"+target.Tag, target.ID)
+func (e *Engine) runRestart(ctx context.Context,jobID string,project model.Project){
+ e.jobLog(jobID,"restarting active release "+project.CurrentRelease)
+ port,err:=e.Docker.RestartRelease(ctx,project)
+ if err!=nil{e.fail(jobID,"restart: "+err.Error());return}
+ if port!=project.UpstreamPort&&e.Docker.Mode()!=runtime.ModeMock{
+  e.fail(jobID,"restarted container changed host port; routing requires repair");return
+ }
+ healthy,latency,err:=e.checkHealth(ctx,port)
+ if !healthy{e.fail(jobID,"restart health check: "+safe(err));return}
+ e.jobLog(jobID,fmt.Sprintf("restart healthy in %d ms",latency));e.succeed(jobID)
 }
-
-// runRestart restarts the container in place and re-checks health.
-func (e *Engine) runRestart(ctx context.Context, jobID string, project model.Project) {
-	e.jobLog(jobID, "restarting container")
-	if err := e.Docker.Restart(project.Name); err != nil {
-		e.Store.UpdateProject(project.ID, func(p *model.Project) { p.Status = model.StatusFailed })
-		e.fail(jobID, "restart: "+err.Error())
-		return
-	}
-	_, hostPort, err := e.Docker.EnsureRunning(ctx, project)
-	if err != nil {
-		e.fail(jobID, "after restart: "+err.Error())
-		return
-	}
-	healthy, latency, herr := e.checkHealth(ctx, hostPort)
-	if !healthy {
-		e.Store.UpdateProject(project.ID, func(p *model.Project) { p.Status = model.StatusFailed })
-		e.fail(jobID, "health after restart failed: "+safe(herr))
-		return
-	}
-	e.Store.UpdateProject(project.ID, func(p *model.Project) { p.Status = model.StatusRunning })
-	e.jobLog(jobID, fmt.Sprintf("restart healthy in %d ms", latency))
-	e.succeed(jobID)
+func (e *Engine) checkHealth(ctx context.Context,hostPort int)(bool,int64,error){
+ if e.Docker.Mode()==runtime.ModeMock{
+  select{case <-ctx.Done():return false,0,ctx.Err();case <-time.After(100*time.Millisecond):return true,12,nil}
+ }
+ hCtx,cancel:=context.WithTimeout(ctx,healthAttempts*healthPause+5*time.Second);defer cancel()
+ return healthcheck.WaitUntilHealthy(hCtx,hostPort,healthAttempts,healthPause)
 }
-
-// checkHealth is real in docker mode, simulated in mock mode (no container
-// actually listens on the port in the lab).
-func (e *Engine) checkHealth(ctx context.Context, hostPort int) (bool, int64, error) {
-	if e.Docker.Mode() == runtime.ModeMock {
-		time.Sleep(150 * time.Millisecond)
-		return true, 12, nil
-	}
-	hCtx, cancel := context.WithTimeout(ctx, healthAttempts*healthPause+5*time.Second)
-	defer cancel()
-	ok, latency, err := healthcheck.WaitUntilHealthy(hCtx, hostPort, healthAttempts, healthPause)
-	if ok {
-		return true, latency, nil
-	}
-	return false, latency, err
-}
-
-// syncCaddy reapplies routing from engine state and mirrors the Caddyfile.
-func (e *Engine) syncCaddy(jobID string) {
-	domains := e.Store.Domains()
-	projects := e.Store.Projects()
-	if err := e.Caddy.ApplyConfig(domains, projects); err != nil {
-		e.jobLog(jobID, "caddy warning: "+err.Error())
-		return
-	}
-	if e.Caddy.Mode() == proxy.ModeCaddy && e.DataDir != "" {
-		cfg := proxy.BuildCaddyfile(domains, projects)
-		path := e.DataDir + "/Caddyfile"
-		if err := writeFile(path, []byte(cfg)); err != nil {
-			e.jobLog(jobID, "caddyfile mirror failed: "+err.Error())
-		}
-	}
-}
-
-func safe(err error) string {
-	if err == nil {
-		return "unknown error"
-	}
-	return err.Error()
-}
+func safe(err error)string{if err==nil{return "unknown error"};return err.Error()}
