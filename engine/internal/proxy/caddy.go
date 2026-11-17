@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+ "net/url"
+ "strings"
  "io"
 	"sync"
 	"time"
@@ -81,7 +83,7 @@ func (c *Caddy) HasRoute(domain string) bool {
 // ApplyConfig regenerates the full Caddy configuration from engine state.
 // Full-config POSTs keep the admin API state consistent with our store.
 func (c *Caddy) ApplyConfig(domains []model.Domain, projects []model.Project) error {
-	cfg := BuildCaddyfile(domains, projects)
+	cfg := c.BuildConfig(domains,projects)
 	if c.mock {
 		c.mu.Lock()
 		c.routes = c.routes[:0]
@@ -101,6 +103,17 @@ func (c *Caddy) ApplyConfig(domains []model.Domain, projects []model.Project) er
         return fmt.Errorf("caddy /load returned %d: %s", resp.StatusCode,string(raw))
 	}
 	return nil
+}
+
+// BuildConfig keeps the dedicated Caddy administration listener on its
+// explicit port. Otherwise a full /load would move it back to shared :2019.
+func (c *Caddy) BuildConfig(domains []model.Domain,projects []model.Project)string{
+ cfg:=BuildCaddyfile(domains,projects)
+ u,err:=url.Parse(c.adminURL)
+ if err==nil&&u.Hostname()=="127.0.0.1"&&u.Port()!=""{
+  cfg=strings.Replace(cfg,"\tadmin 127.0.0.1:2019\n","\tadmin "+u.Host+"\n",1)
+ }
+ return cfg
 }
 
 // BuildCaddyfile renders the configuration the engine would load. Also written

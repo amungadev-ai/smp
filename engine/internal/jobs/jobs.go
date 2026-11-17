@@ -154,7 +154,7 @@ func (e *Engine) runDeploy(ctx context.Context,jobID string,project model.Projec
  e.succeed(jobID)
  e.reapOldReleases(project.ID,release.ID,jobID)
  if e.Caddy.Mode()==proxy.ModeCaddy&&e.DataDir!=""{
-  cfg:=proxy.BuildCaddyfile(domains,e.Store.Projects())
+  cfg:=e.Caddy.BuildConfig(domains,e.Store.Projects())
   if err:=writeFile(filepath.Join(e.DataDir,"Caddyfile"),[]byte(cfg));err!=nil{
    e.jobLog(jobID,"Caddyfile mirror warning: "+err.Error())
   }
