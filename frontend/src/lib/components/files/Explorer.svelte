@@ -1,8 +1,8 @@
 <script lang="ts">
- import Icon from '$lib/components/Icon.svelte';import FolderTree from './FolderTree.svelte';import {fileState,getTree,rootFor,mutateTree,readUploads,snapshotSource} from '$lib/files/store';import {workspace} from '$lib/stores/workspace';import {basename,dirname,children,createEntry,addUploads,renameEntry,deleteEntry,editEntry,encodeText,decodeText,decodeBytes,byteCount,sizeLabel,treeBytes,type Tree} from '$lib/files/model.js';
+ import Icon from '$lib/components/Icon.svelte';import FolderTree from './FolderTree.svelte';import {fileState,getTree,storedRoot,mutateTree,readUploads,snapshotSource} from '$lib/files/store';import {workspace} from '$lib/stores/workspace';import {basename,dirname,children,createEntry,addUploads,renameEntry,deleteEntry,editEntry,encodeText,decodeText,decodeBytes,byteCount,sizeLabel,treeBytes,type Tree} from '$lib/files/model.js';
  export let fixedKey='';export let picker=false;export let onSelect:(source:ReturnType<typeof snapshotSource>)=>void=()=>{};export let initialKey='';export let initialPath='';
  let selection=initialKey||fixedKey,path=initialPath,initialized=false,action:'folder'|'file'|'rename'|'edit'|'preview'|''='',entry='',name='',content='',error='',notice='',busy=false;let uploadInput:HTMLInputElement,folderInput:HTMLInputElement;
- $: spaces=$fileState.spaces;$: projects=$workspace.projects;$: options=[...spaces.map(s=>({key:'space:'+s.id,name:s.name,root:'files'})),...projects.map(p=>({key:'project:'+p.id,name:p.name,root:rootFor(p.framework)}))];
+ $: spaces=$fileState.spaces;$: projects=$workspace.projects;$: options=[...spaces.map(s=>({key:'space:'+s.id,name:s.name,root:'files'})),...projects.map(p=>({key:'project:'+p.id,name:p.name,root:storedRoot($fileState.projects[p.id],p.framework)}))];
  $: target=options.find(t=>t.key===(fixedKey||selection))||(!fixedKey?options[0]:undefined);
  $: data=target?getTree($fileState,target.key,projects.find(p=>target?.key==='project:'+p.id)?.framework):undefined;
  $: tree=data||{} as Tree;

@@ -52,9 +52,10 @@ function detectAt(tree,root){
 }
 /** @param {Tree} tree @param {string} [root] */
 export function detect(tree,root){if(root!==undefined){if(root!=='.'&&!validPath(root))throw Error('Invalid source root.');if(root!=='.'&&tree['app/'+root]?.kind!=='folder')throw Error('Source root does not exist.');return detectAt(tree,root);}
- const top=detectAt(tree,'.');if(top.framework!=='Not detected')return top;
+ const top=detectAt(tree,'.');if(top.framework!=='Not detected'&&top.framework!=='Static website')return top;
  const dirs=[...new Set(Object.keys(tree).filter(p=>tree[p].kind==='file'&&p.startsWith('app/')).map(p=>p.slice(4).split('/')).filter(parts=>parts.length>1&&parts.length<=6&&signals.has(parts.at(-1)||'')&&!parts.slice(0,-1).some(x=>ignored.has(x))).map(parts=>parts.slice(0,-1).join('/')))].sort((a,b)=>a.split('/').length-b.split('/').length||a.localeCompare(b));
  const roots=dirs.filter(d=>!dirs.some(x=>x!==d&&d.startsWith(x+'/')));
+ if(top.framework==='Static website'&&roots.length)return {...top,framework:'Multiple technologies',reason:'HTML entry point and nested application directories found. Review the source root.',confidence:'Review required',candidates:['.',...roots]};
  if(roots.length===1){const found=detectAt(tree,roots[0]);found.reason+=' Found in '+roots[0]+'.';found.candidates=roots;return found;}
  if(roots.length>1)return {...top,framework:'Multiple technologies',reason:'Multiple application directories found. Select one source root for review.',candidates:roots};
  return top;
