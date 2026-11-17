@@ -8,6 +8,7 @@ ROOT=/opt/drevanta
 RELEASES="$ROOT/releases"
 STATE=/var/lib/drevanta-engine
 SERVICE_USER=drevanta
+BUILD_USER=drevanta-build
 UNITS=/etc/systemd/system
 MODE=''
 ACK=0
@@ -110,9 +111,14 @@ else die 'Could not determine Go version';fi
 if ! id "$SERVICE_USER" >/dev/null 2>&1;then
  useradd --system --home-dir "$STATE" --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
+if ! id "$BUILD_USER" >/dev/null 2>&1;then
+ useradd --system --home-dir /var/lib/drevanta-build --shell /usr/sbin/nologin "$BUILD_USER"
+fi
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0700 "$STATE"
+install -d -o "$BUILD_USER" -g "$BUILD_USER" -m 0700 /var/lib/drevanta-build
 install -d -o root -g root -m 0755 "$ROOT" "$RELEASES" "$ROOT/staging"
 STAGE="$(mktemp -d "$ROOT/staging/.build.XXXXXXXX")"
+chmod 0711 "$STAGE"
 OLD="$CURRENT_TARGET"
 cleanup(){
  code=$?
@@ -144,20 +150,21 @@ cleanup(){
  exit "$code"
 }
 trap cleanup EXIT
-install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0750 "$STAGE/app" "$STAGE/app/engine" "$STAGE/app/portal"
+install -d -o "$BUILD_USER" -g "$BUILD_USER" -m 0750 "$STAGE/app" "$STAGE/app/engine" "$STAGE/app/portal"
 say 'Staging audited sources'
-tar -C "$SOURCE/engine" --exclude=./data --exclude=./drevanta-engine -cf - . | tar -C "$STAGE/app/engine" -xf -
-tar -C "$SOURCE/frontend" --exclude=./node_modules --exclude=./build --exclude=./.svelte-kit -cf - . | tar -C "$STAGE/app/portal" -xf -
-chown -R "$SERVICE_USER:$SERVICE_USER" "$STAGE/app"
+tar -C "$SOURCE/engine" --exclude=./data --exclude=./drevanta-engine --exclude='.env' --exclude='.env.*' -cf - . | tar -C "$STAGE/app/engine" -xf -
+tar -C "$SOURCE/frontend" --exclude=./node_modules --exclude=./build --exclude=./.svelte-kit --exclude='.env' --exclude='.env.*' -cf - . | tar -C "$STAGE/app/portal" -xf -
+chown -R "$BUILD_USER:$BUILD_USER" "$STAGE/app"
 say 'Building and testing Go as an unprivileged user'
-runuser -u "$SERVICE_USER" -- env PATH="$PATH" bash -e -c 'cd "$1"; go test ./...; go vet ./...; go build -o drevanta-engine ./cmd/drevanta-engine' _ "$STAGE/app/engine"
+runuser -u "$BUILD_USER" -- env PATH="$PATH" bash -e -c 'cd "$1"; go test ./...; go vet ./...; go build -o drevanta-engine ./cmd/drevanta-engine' _ "$STAGE/app/engine"
 say 'Building and testing SvelteKit as an unprivileged user'
-runuser -u "$SERVICE_USER" -- env PATH="$PATH" bash -e -c 'cd "$1"; npm install --no-audit --no-fund; npm test; npm run check; npm run build' _ "$STAGE/app/portal"
+runuser -u "$BUILD_USER" -- env PATH="$PATH" bash -e -c 'cd "$1"; npm install --no-audit --no-fund; npm test; npm run check; npm run build' _ "$STAGE/app/portal"
 [[ -f "$STAGE/app/portal/build/index.js" && -f "$STAGE/app/engine/drevanta-engine" ]] || die 'Build output missing'
 RELEASE="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 say "Activating release $RELEASE"
 mv "$STAGE/app" "$RELEASES/$RELEASE"
 chown -R root:root "$RELEASES/$RELEASE"
+chmod -R a+rX "$RELEASES/$RELEASE"
 for unit in drevanta-engine.service drevanta-portal.service;do
  if [[ -f "$UNITS/$unit" ]];then cp "$UNITS/$unit" "$STAGE/backup-$unit";fi
 done
