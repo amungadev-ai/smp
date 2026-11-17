@@ -30,4 +30,5 @@ jobs:
         with:
           node-version: '22'
       - run: ./deploy/tests/installer-ci.sh
+      - run: ./deploy/tests/state-ci.sh
       - run: ./deploy/tests/stack-ci.sh

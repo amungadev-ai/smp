@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 cd "$ROOT"
-for script in deploy/install.sh deploy/verify.sh deploy/tests/installer-ci.sh deploy/tests/stack-ci.sh engine/install.sh;do bash -n "$script";done
+for script in deploy/install.sh deploy/verify.sh deploy/tests/installer-ci.sh deploy/tests/stack-ci.sh deploy/state.sh deploy/tests/state-ci.sh engine/install.sh;do bash -n "$script";done
 plan="$(./deploy/install.sh --plan)"
 [[ "$plan" == *'--mock'* && "$plan" == *'127.0.0.1:3000'* && "$plan" == *'127.0.0.1:8080'* ]] || { echo 'Unsafe installer plan' >&2;exit 1; }
 legacy="$(./engine/install.sh --plan)"
@@ -21,5 +21,8 @@ for unit in "$engine" "$portal";do
 done
 grep -Fq 'PORTAL_USER=drevanta-portal' deploy/install.sh
 grep -Fq 'BUILD_USER=drevanta-build' deploy/install.sh
+grep -Fq 'go build -o drevanta-maint ./cmd/drevanta-maint' deploy/install.sh
+grep -Fq 'runuser -u drevanta -- "$BIN" restore' deploy/state.sh
+grep -Fq 'systemctl is-active --quiet drevanta-engine.service' deploy/state.sh
 grep -Fq 'chmod -R a+rX "$RELEASES/$RELEASE"' deploy/install.sh
 echo 'PASS M09 CLI syntax, preview policy and service unit checks'

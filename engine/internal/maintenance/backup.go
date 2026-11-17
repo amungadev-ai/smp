@@ -18,7 +18,7 @@ import (
 )
 
 const MaxStateBytes int64=16<<20
-const archiveMaxBytes int64=MaxStateBytes+1<<20
+const archiveMaxBytes int64=MaxStateBytes+(1<<20)
 const manifestMaxBytes int64=4096
 
 type Manifest struct{

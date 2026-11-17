@@ -40,3 +40,7 @@ Open `http://127.0.0.1:5173/engine`. The development Vite proxy and production a
 ## Readiness
 
 GitHub Actions verifies the frontend, Go engine, installer CLI and a full localhost production-stack HTTP smoke test. **Passing mock CI is not production readiness.** Live rollout still requires a disposable VPS acceptance run, HTTPS, recovery and authorization hardening. Do not install over existing production workloads.
+
+## M10 — recovery and authentication hardening
+
+Authenticated engine sessions are now random, revocable and expire in eight hours; logout is enforced by Go. Engine JSON state may be backed up, verified and restored offline using the M10 maintenance tool; credentials, container volumes and databases are not included. See [M10 recovery](docs/M10-RECOVERY.md). Real VPS acceptance remains pending.

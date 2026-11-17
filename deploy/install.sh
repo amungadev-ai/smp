@@ -119,6 +119,7 @@ if ! id "$BUILD_USER" >/dev/null 2>&1;then
  useradd --system --home-dir /var/lib/drevanta-build --shell /usr/sbin/nologin "$BUILD_USER"
 fi
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0700 "$STATE"
+install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0700 "$STATE/backups"
 install -d -o "$BUILD_USER" -g "$BUILD_USER" -m 0700 /var/lib/drevanta-build
 install -d -o "$PORTAL_USER" -g "$PORTAL_USER" -m 0700 /var/lib/drevanta-portal
 install -d -o root -g root -m 0755 "$ROOT" "$RELEASES" "$ROOT/staging"
@@ -161,10 +162,10 @@ tar -C "$SOURCE/engine" --exclude=./data --exclude=./drevanta-engine --exclude='
 tar -C "$SOURCE/frontend" --exclude=./node_modules --exclude=./build --exclude=./.svelte-kit --exclude='.env' --exclude='.env.*' -cf - . | tar -C "$STAGE/app/portal" -xf -
 chown -R "$BUILD_USER:$BUILD_USER" "$STAGE/app"
 say 'Building and testing Go as an unprivileged user'
-runuser -u "$BUILD_USER" -- env PATH="$PATH" bash -e -c 'cd "$1"; go test ./...; go vet ./...; go build -o drevanta-engine ./cmd/drevanta-engine' _ "$STAGE/app/engine"
+runuser -u "$BUILD_USER" -- env PATH="$PATH" bash -e -c 'cd "$1"; go test ./...; go vet ./...; go build -o drevanta-engine ./cmd/drevanta-engine; go build -o drevanta-maint ./cmd/drevanta-maint' _ "$STAGE/app/engine"
 say 'Building and testing SvelteKit as an unprivileged user'
 runuser -u "$BUILD_USER" -- env PATH="$PATH" bash -e -c 'cd "$1"; npm install --no-audit --no-fund; npm test; npm run check; npm run build' _ "$STAGE/app/portal"
-[[ -f "$STAGE/app/portal/build/index.js" && -f "$STAGE/app/engine/drevanta-engine" ]] || die 'Build output missing'
+[[ -f "$STAGE/app/portal/build/index.js" && -f "$STAGE/app/engine/drevanta-engine" && -f "$STAGE/app/engine/drevanta-maint" ]] || die 'Build output missing'
 RELEASE="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 say "Activating release $RELEASE"
 mv "$STAGE/app" "$RELEASES/$RELEASE"
