@@ -1,20 +1,47 @@
 # Drevanta — Server Management Platform
 
-Self-hosted GUI-first hosting console. SvelteKit + TypeScript portal. Go engine integration is a separate milestone.
+A self-hosted GUI-first hosting console. **SvelteKit + TypeScript frontend** and a **Go deployment engine**, following the v0.16 Drevanta design.
 
-## Development
-From `frontend`, with Node.js 22+:
+## Current milestone: M08A (mock API integration)
+
+The source for the uploaded Go M01 engine is committed in `engine/`. Its new mock-only safety gate prevents it from altering Docker, Caddy, DNS or VPS resources while release-specific container switching and HTTPS failure handling are still being hardened.
+
+The Svelte portal now has an **Engine** entry in the infrastructure sidebar. This is the first screen to connect to the Go REST API. It displays detected host facts, authenticated job state, project and release history, and uses authenticated streaming logs. The remaining native screens still use their browser-local demo stores and **must not be mistaken for live infrastructure**.
+
+## Run locally (two terminals)
+
+Requirements: Go 1.23+, Node.js 22+.
+
+Terminal A — mock Go engine:
+
 ```sh
+cd engine
+go test ./...
+go run ./cmd/drevanta-engine --mock --addr 127.0.0.1:8080 --data ./data
+```
+
+The first run creates `engine/data/admin-password` with owner-only permissions. Use that password in the portal. It is **reused** on later restarts. Do not commit it or copy it into source files.
+
+Terminal B — portal:
+
+```sh
+cd frontend
 npm install
+npm test
 npm run check
-npm run build
 npm run dev
 ```
-Open http://localhost:5173. The native portal is a development preview; data and deployments are simulated. The original v0.16 prototype is available at /reference/v016.html and is the design reference for pending modules.
 
-## Scope
-Dashboard, sidebar, breadcrumbs, five palettes, projects, simulated container releases, logs and rollback, independent domain inventory, server and settings. Native database management is included (simulated). Native storage and file management are included (browser samples). Browser ZIP inspection and application detection are included. Native email management and standalone webmail are included (browser samples). Native website hosting and infrastructure workflows are included as simulations; real Git, cron, services, certificates, backups and VPS operations still require the Go engine. No privileged server operations are exposed.
+Open `http://localhost:5173/engine`. Vite proxies `/api/v1` to `127.0.0.1:8080`. Sign in and try **Deploy image → Job history → Logs → Rollback**, all in mock mode. The original v0.16 design reference remains at `/reference/v016.html`.
 
-Never commit secrets, real credentials or server state. This is not a production installer.
+## Tests
 
-Run `npm test` from `frontend/` for database, file state, application detection, mail state, website and infrastructure tests. See `frontend/MIGRATION.md` for scope.
+- [Frontend CI](.github/workflows/frontend.yml): unit tests, Svelte type-check, production build.
+- [Go engine CI](.github/workflows/engine.yml): Go tests, `go vet`, build.
+- [Migration history](frontend/MIGRATION.md), [engine integration and safety notes](engine/docs/M08A_INTEGRATION.md).
+
+## What is NOT live yet
+
+Real Docker deployments and blue/green rollback, HTTPS/Caddy routing, server installation, Git builds, databases, file uploads, mail delivery, tasks and backups. **The imported engine explicitly rejects `--live` at this milestone.** Do not deploy it on a public VPS as a production management panel.
+
+Never commit secrets or real credentials. Prefer a disposable test server for the forthcoming M08B/M08C steps.
